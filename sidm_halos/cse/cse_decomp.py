@@ -42,31 +42,37 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
         assert fixed_weights.shape == esses.shape
     else:
         fixed_weights = np.zeros_like(esses, dtype=bool)
+
+    if init_guess is None:
         init_guess = esses**-4
 
-    def residual(logweights):
+    def residual(weights_sample):
         weights = np.empty_like(esses)
         weights[fixed_weights] = init_guess[fixed_weights]
-        weights[~fixed_weights] = np.exp(logweights)
+        weights[~fixed_weights] = weights_sample
         calc = rhoCSE_3d(xs, esses, weights=weights)
         return ((calc / truth) - 1) / sigma
 
-    def jacobian(logweights):
+    def jacobian(weights_sample):
         weights = np.empty_like(esses)
         weights[fixed_weights] = init_guess[fixed_weights]
-        weights[~fixed_weights] = np.exp(logweights)
+        weights[~fixed_weights] = weights_sample
         all_bases = rhoCSE_3d(xs, esses, weights=np.ones_like(weights), collapse=False)
         # The *weights is for the log-sampling
-        return ((all_bases.T / truth).T * weights / sigma)[:, ~fixed_weights]
+        return ((all_bases.T / truth).T / sigma)[:, ~fixed_weights]
 
-    if init_guess is not None:
-        logweights_guess = np.log(init_guess)
+    # if init_guess is not None:
+    #     logweights_guess = np.log(init_guess)
 
     # TODO ensure converged?
     if verbose > 0:
         start = time.time()
+    # print(init_guess)
+    # print(f'init guess: {init_guess[~fixed_weights]}')
+    x_scale = esses**4
     lsq_soln = opt.least_squares(
-        residual, logweights_guess[~fixed_weights], jac=jacobian,
+        residual, init_guess[~fixed_weights], jac=jacobian,
+        x_scale=x_scale,
         verbose=verbose,
         **lsq_kwargs
     )
@@ -76,7 +82,7 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
 
     weights_soln = np.empty_like(esses)
     weights_soln[fixed_weights] = init_guess[fixed_weights]
-    weights_soln[~fixed_weights] = np.exp(lsq_soln.x)
+    weights_soln[~fixed_weights] = lsq_soln.x
     soln = CSERepr(weights_soln, esses)
 
     if return_ls_obj:
