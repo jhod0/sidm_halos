@@ -29,7 +29,8 @@ class CSERepr:
         )
 
 
-def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=False, verbose=0, fixed_weights=None, **lsq_kwargs) -> CSERepr:
+def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=False, verbose=0,
+                  fixed_weights=None, require_positive_weights=False, **lsq_kwargs) -> CSERepr:
     '''
     Decomposes a 3D density profile `func` into a sum of CSE profiles, with fixed size parameters `esses`.
     '''
@@ -67,13 +68,18 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
     # TODO ensure converged?
     if verbose > 0:
         start = time.time()
+    if require_positive_weights:
+        bounds = (0, np.inf)
+    else:
+        bounds = (-np.inf, np.inf)
     # print(init_guess)
     # print(f'init guess: {init_guess[~fixed_weights]}')
-    x_scale = esses**4
+    x_scale = (esses**4)[~fixed_weights]
     lsq_soln = opt.least_squares(
         residual, init_guess[~fixed_weights], jac=jacobian,
         x_scale=x_scale,
         verbose=verbose,
+        bounds=bounds,
         **lsq_kwargs
     )
     if verbose > 0:

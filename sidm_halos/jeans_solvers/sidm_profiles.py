@@ -9,10 +9,7 @@ Robertson 2021: https://ui.adsabs.harvard.edu/abs/2021MNRAS.501.4610R/abstract
 
 
 
-from astropy.cosmology import WMAP9
 from astropy import units as u
-from astropy import constants
-
 import numpy as np
 
 from scipy.integrate import odeint
