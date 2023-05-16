@@ -286,6 +286,7 @@ def solve_unitless_jeans(a, guess=None):
 
 # Solve boundary conditions on a large grid of a values
 # That way - we will have high-quality initial guesses for (b, c)
+# TODO this breaks at a >= 4: the solutions no longer work. Get rid of them
 a_range = np.logspace(-2, 1, 1000)
 solved_b_c = []
 guess = None
@@ -301,6 +302,8 @@ solved_b_c = np.array(solved_b_c)
 
 _interp_b_guess = interp1d(a_range, solved_b_c[:, 0], fill_value='extrapolate')
 _interp_c_guess = interp1d(a_range, solved_b_c[:, 1], fill_value='extrapolate')
+
+_interp_a_from_a_over_b = interp1d(a_range / solved_b_c[:, 0], a_range)
 
 
 def unitless_jeans_profile(xs, a, b, c):

@@ -3,6 +3,7 @@ import time
 from scipy import optimize as opt
 
 from .cse_3d import (rhoCSE_3d, rhoCSE_m_enc)
+from ..jeans_solvers import sidm_profiles as _sidm_solved
 
 
 class CSERepr:
@@ -94,6 +95,34 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
     if return_ls_obj:
         return soln, lsq_soln
     return soln
+
+
+def decompose_analytic_jeans(a, b, c, **kwargs):
+    # a = r1 / rs
+    # b = r0 / rs
+    # c = rho0 / rhoNFW
+    def jeans(xs):
+        answer = np.empty_like(xs)
+        answer[xs < a] = c*np.exp(_sidm_solved.y(xs[xs < a]/b))
+        skirt_msk = xs >= a
+        skirt_xs = xs[skirt_msk]
+        answer[skirt_msk] = 1 / (skirt_xs * (1 + skirt_xs)**2)
+        return answer
+
+    return decompose_nfw_like(jeans, a, **kwargs)
+
+
+def decompose_nfw_like(func, a, return_ls_obj=False,
+                       **kwargs):
+    xs = np.logspace(-6, 2, 251)
+    fixed_weights = (NFWCSEDecomp._esses > 10*a)
+    return decompose_cse(
+        func, xs,
+        NFWCSEDecomp._esses, NFWCSEDecomp._weights,
+        fixed_weights=fixed_weights,
+        return_ls_obj=return_ls_obj,
+        **kwargs
+    )
 
 
 _CSE_WEIGHTS_OGURI = np.array([
