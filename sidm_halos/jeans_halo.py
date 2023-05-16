@@ -31,12 +31,30 @@ class OuterNFW:
         h = cosmology.h()
         return self.halo.par['rs']/h * u.Unit('kpc')
 
+    def __repr__(self):
+        return '\n'.join([
+            'Outer NFW \'skirt\' with parameters:',
+            f'\tM{self.mdef:<4} = {self.M*u.Msun:.3e}',
+            f'\tc{self.mdef:<4} = {self.c:.2f}',
+            f'\tz     = {self.z:.2f}',
+            f'\trho_s = {self.rho_s:.3e}',
+            f'\tr_s   = {self.r_s:.2f}'
+        ])
+
 
 class InnerIsothermal:
     def __init__(self, cross_section, sigma_0, rho_0):
         self.cross_section = require_units(cross_section, 'cm2 / g')
         self.sigma_0 = require_units(sigma_0, 'km / s')
         self.rho_0 = require_units(rho_0, 'Msun kpc-3')
+
+    def __repr__(self):
+        return '\n'.join([
+            'Inner isothermal region with parameters:',
+            f'\tsigma/m  = {self.cross_section:.2e}',
+            f'\tsigma_0  = {self.sigma_0:.1f}',
+            f'\trho_0    = {self.rho_0:.3e}'
+        ])
 
 
 class SIDMHaloSolution:
@@ -63,8 +81,16 @@ class SIDMHaloSolution:
         self._r = require_units(cse_xscale, 'kpc')
         self._rho = require_units(cse_magnitude, 'Msun kpc-3')
 
+    def __repr__(self):
+        return '\n'.join([
+            'SIDM halo solution with:',
+            f'\tr1   = {self.r1:.2f}',
+            '\t' + '\n\t'.join(repr(self.isothermal_region).split('\n')),
+            '\t' + '\n\t'.join(repr(self.outer_nfw).split('\n')),
+        ])
+
     @staticmethod
-    def solve_outside_in(M, c, r1, z, mdef='200m', baryon_profile=None):
+    def solve_outside_in(M, c, r1, z, mdef='200m', lsq_fitter_kwargs={}, baryon_profile=None):
         '''
         Constructs a SIDM halo via the 'outside-in' method: taking a known NFW
         M200/c200 and solving what the inner isothermal part of the halo should
@@ -94,8 +120,14 @@ class SIDMHaloSolution:
                 return answer
 
             # In units of NFW Rs
-            xs = np.logspace(-4, 2, 201)
+            xs = np.logspace(-6, 2, 251)
             fixed_weights = (NFWCSEDecomp._esses > 10*a)
+
+            # Set default tolerances
+            lsq_fitter_kwargs = dict(
+                dict(sigma=1e-2, ftol=1e-4, xtol=1e-4),
+                **lsq_fitter_kwargs
+            )
 
             jeans_CSE_decomp, lsq_soln = decompose_cse(
                 lambda x: jeans_soln(x, a, b, c), xs,
@@ -103,7 +135,7 @@ class SIDMHaloSolution:
                 fixed_weights=fixed_weights,
                 return_ls_obj=True,
                 # Tolerances for the least squares solver
-                sigma=1e-2, ftol=1e-4, xtol=1e-4
+                **lsq_fitter_kwargs
             )
 
             # Excellent! Solution is:
