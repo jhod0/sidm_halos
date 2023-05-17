@@ -265,15 +265,72 @@ class SIDMHaloSolution:
 
         raise NotImplementedError
 
+    @property
+    def cross_section(self):
+        return self.isothermal_region.cross_section
+
+    @property
+    def sigma_0(self):
+        return self.isothermal_region.sigma_0
+
+    @property
+    def rho_0(self):
+        return self.isothermal_region.rho_0
+
+    @property
+    def halo(self):
+        '''
+        Returns the Colossus NFW halo object representing the outer 'skirt'
+        '''
+        return self.outer_nfw.halo
+
+    @property
+    def r_s(self):
+        return self.outer_nfw.r_s
+
+    @property
+    def rho_s(self):
+        return self.outer_nfw.rho_s
+
+    def density_3d(self, r):
+        '''
+        Computes the 3D halo density at radius r in kpc using the CSE decomposition
+        of this halo, in units of Msun / kpc3.
+        '''
+        r = require_units(r, 'kpc')
+        x = (r / self.r_s).to(1).value
+        return self.rho_s * self.cse_decomp.density_3d(x)
+
+    def mass_enclosed_3d(self, r):
+        '''
+        Computes the mass enclosed within a radius r in kpc using the
+        CSE decomposition of this halo.
+
+        Units of Msun
+        '''
+        r = require_units(r, 'kpc')
+        x = (r / self.r_s).to(1).value
+        return (
+            self.rho_s * self.r_s**3 * self.cse_decomp.mass_enc_3d(x)
+        ).to('Msun')
+
+    def projected_density_2d(self, r):
+        r = require_units(r, 'kpc')
+        x = (r / self.outer_nfw.r_s).to(1).value
+        return (
+            self.outer_nfw.r_s * self.outer_nfw.rho_s * self.cse_decomp.proj_density(x)
+        ).to('Msun kpc-2')
+
     def to_lenstronomy(self, lens_cosmo: LensCosmo):
         '''
-        Converts the CSE decomposition into a lenstronomy format
+        Converts the CSE decomposition of this halo into a lenstronomy format,
+        in order to compute lensing observables
         '''
-        rs_arcsec = lens_cosmo.phys2arcsec_lens(self.outer_nfw.r_s.to(u.Mpc).value)
+        rs_arcsec = lens_cosmo.phys2arcsec_lens(self.r_s.to(u.Mpc).value)
 
         # Projected weights. Scale by r_s for Abel transform
         cse_a_list = (
-            self.cse_decomp._weights * self.outer_nfw.rho_s * self.outer_nfw.r_s
+            self.cse_decomp._weights * self.rho_s * self.r_s
         ).to('Msun / Mpc2').value
         # Scale to kappa
         cse_a_list = cse_a_list * rs_arcsec**3 / lens_cosmo.sigma_crit

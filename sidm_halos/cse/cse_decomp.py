@@ -3,6 +3,7 @@ import time
 from scipy import optimize as opt
 
 from .cse_3d import (rhoCSE_3d, rhoCSE_m_enc)
+from .cse_2d import kappaCSE_2d
 from ..jeans_solvers import sidm_profiles as _sidm_solved
 
 
@@ -18,6 +19,11 @@ class CSERepr:
         assert self._weights.shape == self._esses.shape
         self._r_scale = r_scale
         self._magnitude = magnitude
+
+    def proj_density(self, r):
+        return self._r_scale * self._magnitude * kappaCSE_2d(
+            r/self._r_scale, self._esses, weights=self._weights
+        )
 
     def density_3d(self, r):
         return self._magnitude * rhoCSE_3d(
