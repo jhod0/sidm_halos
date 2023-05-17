@@ -2,6 +2,7 @@ import numpy as np
 from astropy import units as u
 from astropy import constants
 from colossus.halo import profile_nfw
+from lenstronomy.Cosmo.lens_cosmo import LensCosmo
 
 from . import cosmology
 from .util import require_units
@@ -263,3 +264,18 @@ class SIDMHaloSolution:
             )
 
         raise NotImplementedError
+
+    def to_lenstronomy(self, lens_cosmo: LensCosmo):
+        '''
+        Converts the CSE decomposition into a lenstronomy format
+        '''
+        rs_arcsec = lens_cosmo.phys2arcsec_lens(self.outer_nfw.r_s.to(u.Mpc).value)
+
+        # Projected weights. Scale by r_s for Abel transform
+        cse_a_list = (
+            self.cse_decomp._weights * self.outer_nfw.rho_s * self.outer_nfw.r_s
+        ).to('Msun / Mpc2').value
+        # Scale to kappa
+        cse_a_list = cse_a_list * rs_arcsec**3 / lens_cosmo.sigma_crit
+        cse_s_list = self.cse_decomp._esses * rs_arcsec
+        return ['CSE_PROD_AVG_SET'], [{'a_list': cse_a_list, 's_list': cse_s_list, 'q': 1}]
