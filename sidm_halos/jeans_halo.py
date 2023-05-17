@@ -142,14 +142,14 @@ class SIDMHaloSolution:
             #   - we have r1, CSE decomposition by construction
             #   - get cross section/ sigma_0, rho_0
 
-            rho_0 = halo.rho_s*4*c
+            rho_0 = halo.rho_s*c
             r_0 = b * halo.r_s
             sigma_0 = np.sqrt(
                 4 * np.pi * constants.G
                 * rho_0 * r_0**2
             ).to('km/s')
 
-            rho_1 = 4 * halo.rho_s / (a * (1 + a)**2)
+            rho_1 = halo.rho_s / (a * (1 + a)**2)
             cross_section = 1 / (
                 4 * sigma_0/ np.sqrt(np.pi) * halo_age * rho_1
             )
@@ -161,7 +161,7 @@ class SIDMHaloSolution:
             return SIDMHaloSolution(
                 halo, inner_soln,
                 r1, jeans_CSE_decomp,
-                cse_xscale=halo.r_s, cse_magnitude=halo.rho_s*4
+                cse_xscale=halo.r_s, cse_magnitude=halo.rho_s
             )
 
         raise NotImplementedError
@@ -221,7 +221,7 @@ class SIDMHaloSolution:
             # print(a, b, c)
 
             # NFW params
-            rho_s = rho_0 / c / 4
+            rho_s = rho_0 / c
             r_s = r_1 / a
 
             # print(rho_s)
@@ -249,7 +249,7 @@ class SIDMHaloSolution:
             # TODO
             a = (r_1 / r_s).to(1).value
             b = (r_0 / r_s).to(1).value
-            c = (rho_0 / (4 * rho_s)).to(1).value
+            c = (rho_0 / (rho_s)).to(1).value
             jeans_CSE_decomp, lsq_soln = decompose_analytic_jeans(
                 a, b, c,
                 return_ls_obj=True,
@@ -259,7 +259,7 @@ class SIDMHaloSolution:
             return SIDMHaloSolution(
                 outer_nfw, inner_soln,
                 r_1, jeans_CSE_decomp,
-                cse_xscale=r_s, cse_magnitude=rho_s*4
+                cse_xscale=r_s, cse_magnitude=rho_s
             )
 
         raise NotImplementedError
