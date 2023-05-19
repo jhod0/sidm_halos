@@ -223,6 +223,8 @@ class SIDMHaloSolution:
         # Now the case with baryons
         Menc = halo.mass_enclosed_3d(r1)
         rho_1 = halo.density_3d(r1)
+
+        # TODO allow tuning inner radius etc
         result_integrand, result_params, result_root = _baryons_solver.solve_outside_in(
             r1, Menc, rho_1, halo_age, baryon_profile
         )
@@ -237,7 +239,7 @@ class SIDMHaloSolution:
         c = (result_params['rho_0'] / halo.rho_s).to(1).value
 
         # TODO tuning kwargs here?
-        jeans_CSE_decomp = decompose_integrated_jeans(result_integrand.sol, a, b, c)
+        jeans_CSE_decomp = decompose_integrated_jeans(lambda x: result_integrand.sol(x)[0], a, b, c)
 
         return SIDMHaloSolution(
             halo, inner_soln, r1, jeans_CSE_decomp,
@@ -319,6 +321,7 @@ class SIDMHaloSolution:
             )
 
         # Now the case with a baryon profile
+        # TODO allow tuning inner radius etc
         integrated_result, params =_baryons_solver.integrate_isothermal_region(
             N0, sigma_0, cross_section, halo_age, baryon_profile=baryon_profile
         )
@@ -338,7 +341,7 @@ class SIDMHaloSolution:
         c = (rho_0 / outer_nfw.rho_s).to(1).value
 
         # TODO tuning kwargs here?
-        jeans_CSE_decomp = decompose_integrated_jeans(integrated_result.sol, a, b, c)
+        jeans_CSE_decomp = decompose_integrated_jeans(lambda x: integrated_result.sol(x)[0], a, b, c)
 
         return SIDMHaloSolution(
             outer_nfw, inner_soln,

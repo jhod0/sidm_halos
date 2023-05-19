@@ -103,10 +103,17 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
     return soln
 
 
-def decompose_nfw_like(func, a, return_ls_obj=False,
+def decompose_nfw_like(func, ess_max, return_ls_obj=False,
                        **kwargs):
+    '''
+    Decomposes an NFW-like density profile into a CSE expansion
+
+    Takes the Oguri NFW CSE parameters as a starting point.
+
+    :param func: the density profile to decompose. Should take arguments in units of r_s and return in units of rho_s
+    '''
     xs = np.logspace(-6, 2, 251)
-    fixed_weights = (NFWCSEDecomp._esses > 10*a)
+    fixed_weights = (NFWCSEDecomp._esses > ess_max)
     return decompose_cse(
         func, xs,
         NFWCSEDecomp._esses, NFWCSEDecomp._weights,
@@ -117,33 +124,34 @@ def decompose_nfw_like(func, a, return_ls_obj=False,
 
 
 def decompose_analytic_jeans(a, b, c, **kwargs):
-    # a = r1 / rs
-    # b = r0 / rs
-    # c = rho0 / rhoNFW
-    def jeans(xs):
-        answer = np.empty_like(xs)
-        answer[xs < a] = c*np.exp(_sidm_solved.y(xs[xs < a]/b))
-        skirt_msk = xs >= a
-        skirt_xs = xs[skirt_msk]
-        answer[skirt_msk] = 1 / (skirt_xs * (1 + skirt_xs)**2)
-        return answer
-
-    return decompose_nfw_like(jeans, a, **kwargs)
+    return decompose_integrated_jeans(_sidm_solved.y, a, b, c, **kwargs)
 
 
 def decompose_integrated_jeans(y_interp, a, b, c, **kwargs):
-    # a = r1 / rs
-    # b = r0 / rs
-    # c = rho0 / rhoNFW
+    '''
+    Decomposes a profile consisting of an outer NFW 'skirt' and an inner
+    interpolated solution into a CSE expansion.
+
+    y_interp should be a function that takes x=(r/r_0) and returns
+    ln(rho(r)/rho_0), where rho(0) = rho_0. So y(0) = 0 and y(>0) should
+    be negative
+
+    a = r1 / rs
+    b = r0 / rs
+    c = rho0 / rhoNFW
+    '''
     def jeans(xs):
         answer = np.empty_like(xs)
-        answer[xs < a] = c*np.exp(y_interp(xs[xs < a]/b)[0])
+        answer[xs < a] = c*np.exp(y_interp(xs[xs < a]/b))
         skirt_msk = xs >= a
         skirt_xs = xs[skirt_msk]
         answer[skirt_msk] = 1 / (skirt_xs * (1 + skirt_xs)**2)
         return answer
 
-    return decompose_nfw_like(jeans, a, **kwargs)
+    if 'ess_max' not in kwargs:
+        kwargs['ess_max'] = 10 * a
+
+    return decompose_nfw_like(jeans, **kwargs)
 
 
 _CSE_WEIGHTS_OGURI = np.array([
