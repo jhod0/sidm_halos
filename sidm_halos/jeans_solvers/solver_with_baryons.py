@@ -8,7 +8,7 @@ from astropy import constants
 import numpy as np
 
 # Could use solve_bvp - dedicated solver with boundaries
-from scipy.integrate import solve_ivp
+from scipy.integrate import solve_ivp, solve_bvp
 from scipy import optimize as opt
 
 from ..util import require_units
@@ -80,11 +80,105 @@ def integrate_isothermal_region(N0, sigma0, cross_section, halo_age, baryon_prof
     else:
         print(result.t_events)
         print(N0, sigma0)
+        print(result.y)
         raise ValueError('no r1')
     # in Msun
     Menc = (4 * np.pi * (rho_0 * r0**3) * result.sol(r1_pred)[2])
     rho_1 = rho_0 * np.exp(result.sol(r1_pred))
     return result, {'rho_0': rho_0, 'r0': r0, 'rho_1': rho_1, 'r1': r1_pred*r0, 'Menc': Menc}
+
+
+def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
+                            start_radius=1e-3,
+                            N0_guess=10, sigma_0_guess=600,
+                            **bvp_kwargs):
+    '''
+    Solves the 'outside-in' Jeans problem with baryons, using a boundary value solver
+    '''
+    r1 = require_units(r1, 'kpc')
+    Menc = require_units(Menc, 'Msun')
+    rho_1 = require_units(rho_1, 'Msun kpc-3')
+
+    r1_kpc = r1.value
+    Menc_msun = Menc.value
+    rho_1_units = rho_1.value
+
+    def fun(x, yvec, p):
+        '''
+        Integrand
+        x = r / r_1 (NOT r / r_0 now: there is no r_0)
+        p = log([N0, sigma0])
+        yvec = [y, dydx, M(<x)]
+        '''
+        N0, sigma0 = np.exp(p)
+        rho_0 = N0 * rho_1
+        rho_0_units = rho_0.value
+        const = (
+            (4 * np.pi * constants.G * rho_0 * r1**2) / (sigma0 * u.Unit('km/s'))**2
+        ).to(1).value
+
+        y, dydx, M = yvec
+
+        iso_density = np.exp(y)
+        unitless_density = iso_density + (baryon_profile(x*r1)/rho_0).to(1).value
+        d2ydx2 = - 2 * dydx / x - const * unitless_density
+
+        rho_r = rho_0_units * np.exp(y)
+        # dMdx scaled by enclosed mass
+        # x is unitless, scaled as x = r/r1
+        dMdx = 4 * np.pi * x**2 * rho_r * r1_kpc**3 / Menc_msun
+
+        return [dydx, d2ydx2, dMdx]
+
+    def bc(yveca, yvecb, p):
+        '''
+        Boundary conditions of jeans equation
+        '''
+        logN0, logsigma0 = p
+
+        ya, dydxa, Ma = yveca
+        yb, dydxb, Mb = yvecb
+
+        # Boundary conditions:
+        #   - ya should be 0 (so rho(r=0) = rho_0)
+        #   - dydx at a should be 0
+        #   - M(<a) = 0
+        #   - yb should correspond to rho_1 (therefore yb = - log (N0))
+        #   - Mb should correspond to Menc, so 1 in units of Menc
+        return [ya, dydxa, Ma, yb + logN0, np.log(Mb)]
+
+    x = np.logspace(
+        np.log10(require_units(start_radius, 'kpc').value), np.log10(r1_kpc),
+        101
+    ) / r1_kpc
+
+    # initial guess for y: 0 at x=0, -N0_guess at r1
+    # TODO smarter initial conditions
+    y = -x * np.log(N0_guess)
+    dydx = - np.ones_like(x) * np.log(N0_guess)
+    M = x**3
+    y_guess = np.vstack((y, dydx, M))
+    result = solve_bvp(
+        fun, bc, x, y_guess, p=np.log([N0_guess, sigma_0_guess]),
+        **bvp_kwargs,
+    )
+
+    N0, sigma0 = np.exp(result.p)
+    sigma0 *= u.Unit('km/s')
+    rho_0 = rho_1 * N0
+    cross_section = (1 / (4 * sigma0 / np.sqrt(np.pi) * rho_1 * halo_age)).to('cm2/g')
+
+    params = {
+        'N0': N0,
+        'sigma_0': sigma0,
+        'rho_0': rho_0,
+        'rho_1': rho_1,
+        'r1': r1,
+        'r0': r1,
+        'cross_section': cross_section,
+    }
+
+    return result, params
 
 
 def solve_outside_in(r1, Menc, rho_1, halo_age, baryon_profile, N0_guess=10, sigma_0_guess=600):

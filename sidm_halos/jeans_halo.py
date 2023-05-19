@@ -101,11 +101,26 @@ class OuterNFW:
 
 
 class InnerIsothermal:
-    def __init__(self, cross_section, sigma_0, rho_0, halo_age):
+    def __init__(self, cross_section, sigma_0, rho_0, halo_age,
+                 solution_interp=None, rscale_interp=None, mag_interp=None):
         self.cross_section = require_units(cross_section, 'cm2 / g')
         self.sigma_0 = require_units(sigma_0, 'km / s')
         self.rho_0 = require_units(rho_0, 'Msun kpc-3')
         self.halo_age = require_units(halo_age, 'Gyr')
+        if solution_interp is not None:
+            assert rscale_interp is not None
+            assert mag_interp is not None
+
+            self.rscale_interp = require_units(rscale_interp, 'kpc')
+            self.mag_interp = require_units(mag_interp, 'Msun kpc-3')
+            self.solution_interp = solution_interp
+        else:
+            self.solution_interp = None
+
+    def density_3d(self, r):
+        r = require_units(r, 'kpc')
+        x = (r / self.rscale_interp).to(1).value
+        return self.mag_interp * np.exp(self.solution_interp(x))
 
     @property
     def N0(self):
@@ -115,6 +130,7 @@ class InnerIsothermal:
         ).to(1)
 
     def __repr__(self):
+        has_interp = self.solution_interp is not None
         return '\n'.join([
             'Inner isothermal region with parameters:',
             f'\tsigma/m  = {self.cross_section:.2e}',
@@ -122,6 +138,7 @@ class InnerIsothermal:
             f'\trho_0    = {self.rho_0:.3e}',
             f'\tN0       = {self.N0:.2f}',
             f'\tage      = {self.halo_age:.2f}',
+            f'\tinterp   = {has_interp}',
         ])
 
 
@@ -155,7 +172,8 @@ class SIDMHaloSolution:
         ])
 
     @staticmethod
-    def solve_outside_in(M, c, r1, z, mdef='200m', lsq_fitter_kwargs={}, baryon_profile=None):
+    def solve_outside_in(M, c, r1, z, mdef='200m', baryon_profile=None,
+                         lsq_fitter_kwargs={}, solver='bvp', solver_kwargs={}):
         '''
         Constructs a SIDM halo via the 'outside-in' method: taking a known NFW
         M200/c200 and solving what the inner isothermal part of the halo should
@@ -208,7 +226,10 @@ class SIDMHaloSolution:
 
             inner_soln = InnerIsothermal(
                 cross_section=cross_section, sigma_0=sigma_0, rho_0=rho_0,
-                halo_age=halo_age
+                halo_age=halo_age,
+                solution_interp=_sidm_solved.y,
+                rscale_interp=r_0,
+                mag_interp=rho_0,
             )
 
             return SIDMHaloSolution(
@@ -220,21 +241,32 @@ class SIDMHaloSolution:
         Menc = halo.mass_enclosed_3d(r1)
         rho_1 = halo.density_3d(r1)
 
-        # TODO allow tuning inner radius etc
-        result_integrand, result_params, result_root = _baryons_solver.solve_outside_in(
-            r1, Menc, rho_1, halo_age, baryon_profile
-        )
+        if solver == 'ivp':
+            # TODO allow tuning inner radius etc
+            result_integrand, result_params, result_root = _baryons_solver.solve_outside_in(
+                r1, Menc, rho_1, halo_age, baryon_profile,
+                **solver_kwargs
+            )
+        elif solver == 'bvp':
+            result_integrand, result_params = _baryons_solver.solve_outside_in_as_bvp(
+                r1, Menc, rho_1, halo_age, baryon_profile,
+                **solver_kwargs
+            )
+        else:
+            raise ValueError(f'unkown outside-in solver {solver}')
 
         inner_soln = InnerIsothermal(
             cross_section=result_params['cross_section'], sigma_0=result_params['sigma_0'],
             rho_0=result_params['rho_0'], halo_age=halo_age,
+            solution_interp=lambda x: result_integrand.sol(x)[0],
+            rscale_interp=result_params['r0'],
+            mag_interp=result_params['rho_0'],
         )
 
         a = (r1 / halo.r_s).to(1).value
         b = (result_params['r0'] / halo.r_s).to(1).value
         c = (result_params['rho_0'] / halo.rho_s).to(1).value
 
-        # TODO tuning kwargs here?
         jeans_CSE_decomp = decompose_integrated_jeans(
             lambda x: result_integrand.sol(x)[0], a, b, c,
             **lsq_fitter_kwargs
@@ -288,7 +320,10 @@ class SIDMHaloSolution:
             rho_1 = rho_0 / N0
 
             inner_soln = InnerIsothermal(
-                cross_section, sigma_0, rho_0, halo_age
+                cross_section, sigma_0, rho_0, halo_age,
+                solution_interp=_sidm_solved.y,
+                rscale_interp=r_0,
+                mag_interp=rho_0,
             )
 
             # Great - now solve for outer NFW
@@ -327,7 +362,10 @@ class SIDMHaloSolution:
         rho_1 = params['rho_1']
 
         inner_soln = InnerIsothermal(
-            cross_section, sigma_0, rho_0, halo_age
+            cross_section, sigma_0, rho_0, halo_age,
+            solution_interp=lambda x: integrated_result.sol(x)[0],
+            rscale_interp=r_0,
+            mag_interp=rho_0,
         )
 
         outer_nfw = OuterNFW.solve_from_boundary(r_1, rho_1, params['Menc'], z)
