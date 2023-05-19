@@ -3,25 +3,81 @@ from astropy import units as u
 from astropy import constants
 from colossus.halo import profile_nfw
 from lenstronomy.Cosmo.lens_cosmo import LensCosmo
+from scipy import optimize as opt
 
 from . import cosmology
 from .util import require_units
 from .cse.cse_decomp import (
-    decompose_cse, decompose_analytic_jeans, CSERepr
+    decompose_integrated_jeans, decompose_analytic_jeans, CSERepr
 )
 from .jeans_solvers.sidm_profiles import (
     solve_unitless_jeans, y, _interp_b_guess, _interp_c_guess
 )
 from .jeans_solvers import sidm_profiles as _sidm_solved
+from .jeans_solvers import solver_with_baryons as _baryons_solver
 
 
 class OuterNFW:
     def __init__(self, M, c, z, mdef='200m'):
-        self.halo = profile_nfw.NFWProfile(M=M*cosmology.h(), c=c, z=z, mdef=mdef)
-        self.M = M
+        self.M = require_units(M, 'Msun')
+        self.halo = profile_nfw.NFWProfile(M=self.M.value*cosmology.h(), c=c, z=z, mdef=mdef)
         self.c = c
         self.z = z
         self.mdef = mdef
+
+    @staticmethod
+    def solve_from_boundary(r1, rho_1, Menc, z, mdef='200m'):
+        '''
+        Returns the NFW halo that satisfies:
+
+            - rho(r1) = rho_1
+            - M(<r1) = Menc
+        '''
+        r1 = require_units(r1, 'kpc')
+        rho_1 = require_units(rho_1, 'Msun kpc-3')
+        Menc = require_units(Menc, 'Msun')
+
+        K = (Menc / (rho_1 * r1**3)).to(1).value
+        def f(lna):
+            a = np.exp(lna)
+            # Should equal K
+            ratio = 4 * np.pi / a**3 * (np.log(1 + a) - a / (1 + a)) * a * (1 + a)**2
+            return 100 * np.log(ratio / K)
+
+        solved_a = opt.root(f, [0])
+        a = np.exp(solved_a.x).reshape(())
+
+        r_s = r1 / a
+        rho_s = rho_1 * a * (1 + a)**2
+
+        h = cosmology.h()
+        halo = profile_nfw.NFWProfile(
+            rhos=(rho_s/h**2).to('Msun kpc-3').value, rs=(r_s*h).to('kpc').value, z=z
+        )
+        Rhalo, Mhalo = halo.RMDelta(z, mdef)
+        Rhalo /= h
+        Mhalo /= h
+        chalo = (Rhalo*u.kpc / r_s).to(1).value
+
+        return OuterNFW(M=Mhalo, c=chalo, z=z, mdef=mdef)
+
+    def density_3d(self, r):
+        '''
+        NFW 3D density at a radius r, in Msun / kpc3
+        '''
+        r = require_units(r, 'kpc')
+        x = (r / self.r_s).to(1).value
+        return self.rho_s / (x * (1 + x)**2)
+
+    def mass_enclosed_3d(self, r):
+        '''
+        3D mass enclosed within a radius r
+        '''
+        r = require_units(r, 'kpc')
+        x = (r / self.r_s).to(1).value
+        return (4 * np.pi * self.rho_s * self.r_s**3 * (
+            np.log(1 + x) - x / (1 + x)
+        )).to('Msun')
 
     @property
     def rho_s(self):
@@ -36,7 +92,7 @@ class OuterNFW:
     def __repr__(self):
         return '\n'.join([
             'Outer NFW \'skirt\' with parameters:',
-            f'\tM{self.mdef:<4} = {self.M*u.Msun:.3e}',
+            f'\tM{self.mdef:<4} = {self.M:.3e}',
             f'\tc{self.mdef:<4} = {self.c:.2f}',
             f'\tz     = {self.z:.2f}',
             f'\trho_s = {self.rho_s:.3e}',
@@ -93,7 +149,6 @@ class SIDMHaloSolution:
         self._r = require_units(cse_xscale, 'kpc')
         self._rho = require_units(cse_magnitude, 'Msun kpc-3')
 
-
     def __repr__(self):
         return '\n'.join([
             'SIDM halo solution with:',
@@ -123,7 +178,6 @@ class SIDMHaloSolution:
         if baryon_profile is None:
             guess = [_interp_b_guess(a), _interp_c_guess(a)]
             b, c = solve_unitless_jeans(a, guess=guess)
-            # print(a, b, c)
 
             # Set default tolerances
             lsq_fitter_kwargs = dict(
@@ -156,7 +210,8 @@ class SIDMHaloSolution:
             )
 
             inner_soln = InnerIsothermal(
-                cross_section=cross_section, sigma_0=sigma_0, rho_0=rho_0, halo_age=halo_age
+                cross_section=cross_section, sigma_0=sigma_0, rho_0=rho_0,
+                halo_age=halo_age
             )
 
             return SIDMHaloSolution(
@@ -165,7 +220,29 @@ class SIDMHaloSolution:
                 cse_xscale=halo.r_s, cse_magnitude=halo.rho_s
             )
 
-        raise NotImplementedError
+        # Now the case with baryons
+        Menc = halo.mass_enclosed_3d(r1)
+        rho_1 = halo.density_3d(r1)
+        result_integrand, result_params, result_root = _baryons_solver.solve_outside_in(
+            r1, Menc, rho_1, halo_age, baryon_profile
+        )
+
+        inner_soln = InnerIsothermal(
+            cross_section=result_params['cross_section'], sigma_0=result_params['sigma_0'],
+            rho_0=result_params['rho_0'], halo_age=halo_age,
+        )
+
+        a = (r1 / halo.r_s).to(1).value
+        b = (result_params['r0'] / halo.r_s).to(1).value
+        c = (result_params['rho_0'] / halo.rho_s).to(1).value
+
+        # TODO tuning kwargs here?
+        jeans_CSE_decomp = decompose_integrated_jeans(result_integrand.sol, a, b, c)
+
+        return SIDMHaloSolution(
+            halo, inner_soln, r1, jeans_CSE_decomp,
+            cse_xscale=halo.r_s, cse_magnitude=halo.rho_s,
+        )
 
     @staticmethod
     def solve_inside_out(cross_section, N0, sigma_0, z, mdef='200m', lsq_fitter_kwargs={}, baryon_profile=None):
@@ -210,36 +287,14 @@ class SIDMHaloSolution:
 
             # Great - now solve for outer NFW
             # We have unitful rho_1, r_1
-            boundary_density = np.exp(y(x1))
-            mass_enclosed = _sidm_solved.mass_interp(x1)
+            boundary_density = np.exp(y(x1)) * rho_0
+            mass_enclosed = 4 * np.pi * _sidm_solved.mass_interp(x1) * (rho_0 * r_0**3)
 
-            # We know x1 = r1/r0 = b/a
-            # and we have a relation for b/a vs. a
-            # So solve for a
-            a = _sidm_solved._interp_a_from_a_over_b(x1)
-            b = a / x1
-            c = _sidm_solved._interp_c_guess(a)
-            # print(a, b, c)
-
-            # NFW params
-            rho_s = rho_0 / c
-            r_s = r_1 / a
-
-            # print(rho_s)
-            # print(r_s)
-
-            halo = profile_nfw.NFWProfile(
-                rhos=(rho_s/h**2).to('Msun kpc-3').value, rs=(r_s*h).to('kpc').value, z=z
+            outer_nfw = OuterNFW.solve_from_boundary(
+                r_1, boundary_density, mass_enclosed, z=z, mdef=mdef
             )
-            Rhalo, Mhalo = halo.RMDelta(z, mdef)
-            Rhalo /= h
-            Mhalo /= h
-            # print(Rhalo, Mhalo)
-
-            chalo = (Rhalo*u.kpc / r_s).to(1).value
-            # print(chalo)
-
-            outer_nfw = OuterNFW(Mhalo, chalo, z, mdef=mdef)
+            r_s = outer_nfw.r_s
+            rho_s = outer_nfw.rho_s
 
             # Set default tolerances
             lsq_fitter_kwargs = dict(
@@ -263,7 +318,33 @@ class SIDMHaloSolution:
                 cse_xscale=r_s, cse_magnitude=rho_s
             )
 
-        raise NotImplementedError
+        # Now the case with a baryon profile
+        integrated_result, params =_baryons_solver.integrate_isothermal_region(
+            N0, sigma_0, cross_section, halo_age, baryon_profile=baryon_profile
+        )
+        r_0 = params['r0']
+        r_1 = params['r1']
+        rho_0 = params['rho_0']
+        rho_1 = params['rho_1']
+
+        inner_soln = InnerIsothermal(
+            cross_section, sigma_0, rho_0, halo_age
+        )
+
+        outer_nfw = OuterNFW.solve_from_boundary(r_1, rho_1, params['Menc'], z)
+
+        a = (r_1 / outer_nfw.r_s).to(1).value
+        b = (r_0 / outer_nfw.r_s).to(1).value
+        c = (rho_0 / outer_nfw.rho_s).to(1).value
+
+        # TODO tuning kwargs here?
+        jeans_CSE_decomp = decompose_integrated_jeans(integrated_result.sol, a, b, c)
+
+        return SIDMHaloSolution(
+            outer_nfw, inner_soln,
+            r_1, jeans_CSE_decomp,
+            cse_xscale=outer_nfw.r_s, cse_magnitude=outer_nfw.rho_s
+        )
 
     @property
     def cross_section(self):
