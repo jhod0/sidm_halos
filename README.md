@@ -10,7 +10,7 @@ can be fed to e.g. lenstronomy to give strong lensing observables.
 
 ## Use
 
-```
+```python
 from sidm_halos import SIDMHaloSolution
 # Solve for a halo with M200m=5e14 Msun, c200m=6,
 # and the crossover radius between NFW and isothermal at 75kpc
@@ -27,6 +27,8 @@ density = soln.density_3d(rs)
 
 plt.plot(rs, density, label='SIDM')
 plt.plot(rs, soln.outer_nfw.density_3d(rs), label='NFW')
+plt.xlabel('r (kpc)')
+plt.ylabel('density (Msun kpc-3)')
 plt.legend()
 plt.loglog()
 ```
