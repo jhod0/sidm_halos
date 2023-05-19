@@ -33,6 +33,9 @@ plt.legend()
 plt.loglog()
 ```
 
+And it gives this plot:
+![image](https://github.com/jhod0/sidm_halos/assets/8944001/d1d2b928-379b-4970-ba1f-53467683b8c0)
+
 ## Dependencies
 
 - scipy
