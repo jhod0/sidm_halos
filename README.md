@@ -22,7 +22,7 @@ soln = SIDMHaloSolution.solve_outside_in(
 print(soln.cross_section)
 print(soln.sigma_0)
 
-rs = np.logspace(-2, 2, 1001)*soln.r_s
+rs = np.logspace(-2, 1, 1001)*soln.r_s
 density = soln.density_3d(rs)
 
 plt.plot(rs, density, label='SIDM')
@@ -34,6 +34,7 @@ plt.loglog()
 ```
 
 And it gives this plot:
+
 ![image](https://github.com/jhod0/sidm_halos/assets/8944001/d1d2b928-379b-4970-ba1f-53467683b8c0)
 
 ## Dependencies

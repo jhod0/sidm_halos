@@ -131,8 +131,7 @@ class SIDMHaloSolution:
     an outer NFW 'skirt' and inner isothermal region.
     '''
     def __init__(self, outer_nfw: OuterNFW, isothermal_region: InnerIsothermal,
-                 r1, cse_decomp: CSERepr,
-                 cse_xscale = None, cse_magnitude = None):
+                 r1, cse_decomp: CSERepr):
         # should have:
         #   halo params:
         #       - M200m, c200m, z
@@ -146,8 +145,6 @@ class SIDMHaloSolution:
         self.isothermal_region = isothermal_region
         self.r1 = require_units(r1, 'kpc')
         self.cse_decomp = cse_decomp
-        self._r = require_units(cse_xscale, 'kpc')
-        self._rho = require_units(cse_magnitude, 'Msun kpc-3')
 
     def __repr__(self):
         return '\n'.join([
@@ -173,17 +170,17 @@ class SIDMHaloSolution:
         halo_age = cosmology.halo_age(z)
         r1 = require_units(r1, 'kpc')
 
+        # Set default tolerances
+        lsq_fitter_kwargs = dict(
+            dict(sigma=1e-2, ftol=1e-4, xtol=1e-4),
+            **lsq_fitter_kwargs
+        )
+
         a = (r1 / halo.r_s).to(1).value
 
         if baryon_profile is None:
             guess = [_interp_b_guess(a), _interp_c_guess(a)]
             b, c = solve_unitless_jeans(a, guess=guess)
-
-            # Set default tolerances
-            lsq_fitter_kwargs = dict(
-                dict(sigma=1e-2, ftol=1e-4, xtol=1e-4),
-                **lsq_fitter_kwargs
-            )
 
             jeans_CSE_decomp, lsq_soln = decompose_analytic_jeans(
                 a, b, c,
@@ -217,7 +214,6 @@ class SIDMHaloSolution:
             return SIDMHaloSolution(
                 halo, inner_soln,
                 r1, jeans_CSE_decomp,
-                cse_xscale=halo.r_s, cse_magnitude=halo.rho_s
             )
 
         # Now the case with baryons
@@ -239,11 +235,13 @@ class SIDMHaloSolution:
         c = (result_params['rho_0'] / halo.rho_s).to(1).value
 
         # TODO tuning kwargs here?
-        jeans_CSE_decomp = decompose_integrated_jeans(lambda x: result_integrand.sol(x)[0], a, b, c)
+        jeans_CSE_decomp = decompose_integrated_jeans(
+            lambda x: result_integrand.sol(x)[0], a, b, c,
+            **lsq_fitter_kwargs
+        )
 
         return SIDMHaloSolution(
             halo, inner_soln, r1, jeans_CSE_decomp,
-            cse_xscale=halo.r_s, cse_magnitude=halo.rho_s,
         )
 
     @staticmethod
@@ -259,6 +257,12 @@ class SIDMHaloSolution:
         halo_age = cosmology.halo_age(z)
         cross_section = require_units(cross_section, 'cm2/g')
         sigma_0 = require_units(sigma_0, 'km/s')
+
+        # Set default tolerances
+        lsq_fitter_kwargs = dict(
+            dict(sigma=1e-2, ftol=1e-4, xtol=1e-4),
+            **lsq_fitter_kwargs
+        )
 
         if baryon_profile is None:
             rho_0 = (
@@ -298,13 +302,6 @@ class SIDMHaloSolution:
             r_s = outer_nfw.r_s
             rho_s = outer_nfw.rho_s
 
-            # Set default tolerances
-            lsq_fitter_kwargs = dict(
-                dict(sigma=1e-2, ftol=1e-4, xtol=1e-4),
-                **lsq_fitter_kwargs
-            )
-
-            # TODO
             a = (r_1 / r_s).to(1).value
             b = (r_0 / r_s).to(1).value
             c = (rho_0 / (rho_s)).to(1).value
@@ -317,7 +314,6 @@ class SIDMHaloSolution:
             return SIDMHaloSolution(
                 outer_nfw, inner_soln,
                 r_1, jeans_CSE_decomp,
-                cse_xscale=r_s, cse_magnitude=rho_s
             )
 
         # Now the case with a baryon profile
@@ -340,13 +336,14 @@ class SIDMHaloSolution:
         b = (r_0 / outer_nfw.r_s).to(1).value
         c = (rho_0 / outer_nfw.rho_s).to(1).value
 
-        # TODO tuning kwargs here?
-        jeans_CSE_decomp = decompose_integrated_jeans(lambda x: integrated_result.sol(x)[0], a, b, c)
+        jeans_CSE_decomp = decompose_integrated_jeans(
+            lambda x: integrated_result.sol(x)[0], a, b, c,
+            **lsq_fitter_kwargs
+        )
 
         return SIDMHaloSolution(
             outer_nfw, inner_soln,
             r_1, jeans_CSE_decomp,
-            cse_xscale=outer_nfw.r_s, cse_magnitude=outer_nfw.rho_s
         )
 
     @property
