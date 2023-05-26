@@ -292,18 +292,32 @@ solved_b_c = []
 guess = None
 for a in a_range:
     try:
-        solved_b_c.append(solve_unitless_jeans(a, guess=guess))
-        guess = solved_b_c[-1]
+        soln_b_c = solve_unitless_jeans(a, guess=guess)
+        solved_b_c.append(soln_b_c)
+        # Keep this as the guess for next time
+        guess = soln_b_c
     except ValueError:
         print('jeans solving failed at a =', a)
         solved_b_c.append([0.0, 0.0])
 
 solved_b_c = np.array(solved_b_c)
 
-_interp_b_guess = interp1d(a_range, solved_b_c[:, 0], fill_value='extrapolate')
-_interp_c_guess = interp1d(a_range, solved_b_c[:, 1], fill_value='extrapolate')
+_interp_b_guess = interp1d(a_range, solved_b_c[:, 0], bounds_error=True)
+_interp_c_guess = interp1d(a_range, solved_b_c[:, 1], bounds_error=True)
 
 _interp_a_from_a_over_b = interp1d(a_range / solved_b_c[:, 0], a_range)
+
+
+def guess_b_c(a):
+    try:
+        b_guess = _interp_b_guess(a)
+        c_guess = _interp_c_guess(a)
+        return b_guess, c_guess
+    except ValueError:
+        if a < 1e-2:
+            return a / 3, 3 / a
+        if a > a_range[-1]:
+            raise ValueError(f'a too high {a:.2e}, no physical solution')
 
 
 def unitless_jeans_profile(xs, a, b, c):

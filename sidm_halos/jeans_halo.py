@@ -10,9 +10,6 @@ from .util import require_units
 from .cse.cse_decomp import (
     decompose_integrated_jeans, decompose_analytic_jeans, CSERepr
 )
-from .jeans_solvers.sidm_profiles import (
-    solve_unitless_jeans, y, _interp_b_guess, _interp_c_guess
-)
 from .jeans_solvers import sidm_profiles as _sidm_solved
 from .jeans_solvers import solver_with_baryons as _baryons_solver
 
@@ -197,8 +194,8 @@ class SIDMHaloSolution:
         a = (r1 / halo.r_s).to(1).value
 
         if baryon_profile is None:
-            guess = [_interp_b_guess(a), _interp_c_guess(a)]
-            b, c = solve_unitless_jeans(a, guess=guess)
+            guess = _sidm_solved.guess_b_c(a)
+            b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
 
             jeans_CSE_decomp, lsq_soln = decompose_analytic_jeans(
                 a, b, c,
@@ -328,7 +325,7 @@ class SIDMHaloSolution:
 
             # Great - now solve for outer NFW
             # We have unitful rho_1, r_1
-            boundary_density = np.exp(y(x1)) * rho_0
+            boundary_density = np.exp(_sidm_solved.y(x1)) * rho_0
             mass_enclosed = 4 * np.pi * _sidm_solved.mass_interp(x1) * (rho_0 * r_0**3)
 
             outer_nfw = OuterNFW.solve_from_boundary(
