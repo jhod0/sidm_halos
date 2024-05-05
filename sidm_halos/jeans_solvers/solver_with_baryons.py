@@ -91,6 +91,7 @@ def integrate_isothermal_region(N0, sigma0, cross_section, halo_age, baryon_prof
 def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
                             start_radius=1e-3,
                             N0_guess=10, sigma_0_guess=600,
+                            ntries=3,
                             **bvp_kwargs):
     '''
     Solves the 'outside-in' Jeans problem with baryons, using a boundary value solver
@@ -154,14 +155,32 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
 
     # initial guess for y: 0 at x=0, -N0_guess at r1
     # TODO smarter initial conditions
-    y = -x * np.log(N0_guess)
-    dydx = - np.ones_like(x) * np.log(N0_guess)
-    M = x**3
-    y_guess = np.vstack((y, dydx, M))
-    result = solve_bvp(
-        fun, bc, x, y_guess, p=np.log([N0_guess, sigma_0_guess]),
-        **bvp_kwargs,
-    )
+    for i in range(ntries):
+        y = -x * np.log(N0_guess)
+        dydx = - np.ones_like(x) * np.log(N0_guess)
+        M = x**3
+        y_guess = np.vstack((y, dydx, M))
+        result = solve_bvp(
+            fun, bc, x, y_guess, p=np.log([N0_guess, sigma_0_guess]),
+            **bvp_kwargs,
+        )
+
+        if result.success:
+            # If it worked, great!
+            break
+        else:
+            # JOD 2024/05/05:
+            # I'm finding when bvp fails for small values of r1,
+            # increasing N0_guess helps, but when it fails for large
+            # values of r1, decreasing N0_guess helps
+            # Having it INCREASE because it seems to fail more often
+            # at small r1
+            N0_guess *= 3
+
+    if not result.success:
+        msg = f'BVP solver failed after {ntries} tries' \
+              f'with message {result.message}'
+        raise ValueError(msg)
 
     N0, sigma0 = np.exp(result.p)
     sigma0 *= u.Unit('km/s')
