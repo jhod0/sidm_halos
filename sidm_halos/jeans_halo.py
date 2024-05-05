@@ -2,7 +2,10 @@ import numpy as np
 from astropy import units as u
 from astropy import constants
 from colossus.halo import profile_nfw
-from lenstronomy.Cosmo.lens_cosmo import LensCosmo
+try:
+    from lenstronomy.Cosmo.lens_cosmo import LensCosmo
+except ImportError:
+    print('lenstronomy not available')
 from scipy import optimize as opt
 
 from . import cosmology
@@ -437,7 +440,7 @@ class SIDMHaloSolution:
             self.outer_nfw.r_s * self.outer_nfw.rho_s * self.cse_decomp.proj_density(x)
         ).to('Msun kpc-2')
 
-    def to_lenstronomy(self, lens_cosmo: LensCosmo):
+    def to_lenstronomy(self, lens_cosmo):
         '''
         Converts the CSE decomposition of this halo into a lenstronomy format,
         in order to compute lensing observables
