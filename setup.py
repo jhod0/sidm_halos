@@ -7,7 +7,7 @@ setup(
     description="Jack's tools for computing SIDM dark matter profiles",
     author="Jackson O'Donnell",
     author_email='jacksonhodonnell@gmail.com',
-    packages=['sidm_halos', 'sidm_halos.cse', 'sidm_halos.jeans_solver'],
+    packages=['sidm_halos', 'sidm_halos.cse', 'sidm_halos.jeans_solvers'],
     install_requires=[
         'astropy',
         'numpy', 'scipy', 'matplotlib',
