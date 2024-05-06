@@ -248,8 +248,11 @@ class SIDMHaloSolution:
                 **solver_kwargs
             )
         elif solver == 'bvp':
+            guess = _sidm_solved.guess_b_c(a)
+            b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
             result_integrand, result_params = _baryons_solver.solve_outside_in_as_bvp(
                 r1, Menc, rho_1, halo_age, baryon_profile,
+                abc=(a, b, c),
                 **solver_kwargs
             )
         else:
