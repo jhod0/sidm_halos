@@ -142,6 +142,17 @@ class InnerIsothermal:
         ])
 
 
+# This is extremely annoying: We could just use the lambda function
+#       lambda x: result_integrand.sol(x)[0]
+# But it can't be pickled so it breaks all parallelism
+class _result_integrand_wrapper:
+    def __init__(self, result_integrand):
+        self.result_integrand = result_integrand
+
+    def __call__(self, x):
+        return self.result_integrand.sol(x)[0]
+
+
 class SIDMHaloSolution:
     '''
     Represents a self-interacting dark matter halo with the semi-analytic Jeans method, using
@@ -261,7 +272,9 @@ class SIDMHaloSolution:
         inner_soln = InnerIsothermal(
             cross_section=result_params['cross_section'], sigma_0=result_params['sigma_0'],
             rho_0=result_params['rho_0'], halo_age=halo_age,
-            solution_interp=lambda x: result_integrand.sol(x)[0],
+            # See comment above the _result_integrand_wrapper class
+            # solution_interp=lambda x: result_integrand.sol(x)[0],
+            solution_interp=_result_integrand_wrapper(result_integrand),
             rscale_interp=result_params['r0'],
             mag_interp=result_params['rho_0'],
         )
