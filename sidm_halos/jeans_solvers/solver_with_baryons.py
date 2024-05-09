@@ -107,7 +107,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
     def fun(x, yvec, p):
         '''
         Integrand
-        x = r / r_1 (NOT r / r_0 now: there is no r_0)
+        x = r / r_1     <- (N.B. NOT r / r_0 now: there is no r_0)
         p = log([N0, sigma0])
         yvec = [y, dydx, M(<x)]
         '''
@@ -122,6 +122,8 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
 
         iso_density = np.exp(y)
         unitless_density = iso_density + (baryon_profile(x*r1)/rho_0).to(1).value
+        # FIXME: This line is not robust to extreme conditions, and seems to have
+        # overflow errors sometimes, which cause the bvp solver to fail.
         d2ydx2 = - 2 * dydx / x - const * unitless_density
 
         rho_r = rho_0_units * np.exp(y)
@@ -140,6 +142,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         ya, dydxa, Ma = yveca
         yb, dydxb, Mb = yvecb
 
+        # Need 5 degrees of constraint (see note below)
         # Boundary conditions:
         #   - ya should be 0 (so rho(r=0) = rho_0)
         #   - dydx at a should be 0
@@ -147,6 +150,75 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         #   - yb should correspond to rho_1 (therefore yb = - log (N0))
         #   - Mb should correspond to Menc, so 1 in units of Menc
         return [ya, dydxa, Ma, yb + logN0, np.log(Mb)]
+
+    def fun_jac(x, yvec, p):
+        '''
+        Jacobian of `fun`, it's derivatives with respect to `yvec` and `p`.
+        '''
+        N0, sigma0 = np.exp(p)
+        y, dydx, M = yvec
+        _dydx, d2ydx2, dMdx = fun(x, yvec, p)
+        rho_0 = N0 * rho_1
+        const = (
+            (4 * np.pi * constants.G * rho_0 * r1**2) / (sigma0 * u.Unit('km/s'))**2
+        ).to(1).value
+
+        iso_density = np.exp(y)
+        unitless_density = -(2 * dydx / x + d2ydx2) / const
+
+        zeros = np.zeros_like(x)
+        ones = np.ones_like(x)
+
+        df_dy = np.array([
+            # Derivatives of dydx
+            [zeros, ones, zeros],
+            # Derivatives of d2ydx2
+            [-const * np.exp(y), -2 / x, zeros],
+            # Derivatives of dMdx
+            [dMdx, zeros, zeros],
+        ])
+        df_dp = np.array([
+            # Derivatives of dydx
+            [zeros, zeros],
+            # Derivatives of d2ydx2
+            [-const * iso_density, 2 * const * unitless_density],
+            # Derivatives of dMdx
+            [dMdx, zeros],
+        ])
+        return df_dy, df_dp
+
+    def bc_jac(yveca, yvecb, p):
+        '''
+        Jacobian of the boundary conditions, it's derivatives with respect to
+        yveca, ybecb, and p.
+        '''
+        logN0, logsigma0 = p
+
+        ya, dydxa, Ma = yveca
+        yb, dydxb, Mb = yvecb
+
+        dbc_dya = np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [0, 0, 0],
+            [0, 0, 0]
+        ])
+        dbc_dyb = np.array([
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+            [1, 0, 0],
+            [0, 0, 1/Mb]
+        ])
+        dbc_dp = np.array([
+            [0, 0],
+            [0, 0],
+            [0, 0],
+            [1, 0],
+            [0, 0],
+        ])
+        return dbc_dya, dbc_dyb, dbc_dp
 
     x = np.logspace(
         np.log10(require_units(start_radius, 'kpc').value), np.log10(r1_kpc),
@@ -168,12 +240,22 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         M /= np.max(M)
         N0_guess = np.exp(-np.min(y))
     y_guess = np.vstack((y, dydx, M))
+
+    # Dimensionality:
+    #   - y(x) is a 3-vector (n = 3)
+    #   - p is a 2-vector (k = 2)
+    # According to solve_bvp docs, the boundary condition needs (n+k) degrees
+    # of constraint for everything to be determined. Therefore bc needs to
+    # return a 5d vector
     result = solve_bvp(
         fun, bc, x, y_guess, p=np.log([N0_guess, sigma_0_guess]),
+        fun_jac=fun_jac,
+        bc_jac=bc_jac,
         **bvp_kwargs,
     )
 
     if not result.success:
+        print(result)
         msg = f'BVP solver failed ' \
               f'with message {result.message}'
         raise ValueError(msg)

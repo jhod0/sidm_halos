@@ -37,12 +37,6 @@ def ddy_approx(x):
     return -1/(3*np.cosh(x/np.sqrt(6)))
 
 
-xs = np.linspace(0, 3, 1000)
-
-
-# In[3]:
-
-
 def _jeans_function_integrand(y, x):
     y, dy = y
     ddy = -(np.exp(y) + 2*dy / x)

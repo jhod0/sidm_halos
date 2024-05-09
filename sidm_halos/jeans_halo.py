@@ -102,7 +102,8 @@ class OuterNFW:
 
 class InnerIsothermal:
     def __init__(self, cross_section, sigma_0, rho_0, halo_age,
-                 solution_interp=None, rscale_interp=None, mag_interp=None):
+                 solution_interp=None, rscale_interp=None, mag_interp=None,
+                 _raw_solution=None):
         self.cross_section = require_units(cross_section, 'cm2 / g')
         self.sigma_0 = require_units(sigma_0, 'km / s')
         self.rho_0 = require_units(rho_0, 'Msun kpc-3')
@@ -116,6 +117,7 @@ class InnerIsothermal:
             self.solution_interp = solution_interp
         else:
             self.solution_interp = None
+        self._raw_solution = _raw_solution
 
     def density_3d(self, r):
         r = require_units(r, 'kpc')
@@ -277,6 +279,7 @@ class SIDMHaloSolution:
             solution_interp=_result_integrand_wrapper(result_integrand),
             rscale_interp=result_params['r0'],
             mag_interp=result_params['rho_0'],
+            _raw_solution=result_integrand,
         )
 
         a = (r1 / halo.r_s).to(1).value
