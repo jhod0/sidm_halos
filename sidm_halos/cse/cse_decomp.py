@@ -37,7 +37,7 @@ class CSERepr:
 
 
 def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=False, verbose=0,
-                  fixed_weights=None, require_positive_weights=False, **lsq_kwargs) -> CSERepr:
+                  fixed_weights=None, require_positive_weights=False, verbose=False, **lsq_kwargs) -> CSERepr:
     '''
     Decomposes a 3D density profile `func` into a sum of CSE profiles, with fixed size parameters `esses`.
     '''
@@ -97,7 +97,7 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
         )
     except:
         init_resid = residual(init_guess[~fixed_weights])
-        if not np.all(~np.isfinite(init_resid)):
+        if verbose and not np.all(~np.isfinite(init_resid)):
             print('non-finite residual for x values:')
             xs_non_finite = xs[~np.isfinite(init_resid)]
             print(xs_non_finite)
