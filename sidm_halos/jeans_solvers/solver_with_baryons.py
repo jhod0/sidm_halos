@@ -11,6 +11,7 @@ import numpy as np
 from scipy.integrate import solve_ivp, solve_bvp
 from scipy import optimize as opt
 
+from .error import SIDMSolutionError
 from ..util import require_units
 
 
@@ -104,6 +105,14 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
     Menc_msun = Menc.value
     rho_1_units = rho_1.value
 
+    # This represents the dimensionless constant at N0 = 1 and sigma0 = 100 km/s
+    # This can then be scaled on each evaluation, without wasting time with units.
+    # Seems to increase speed, simple tests show it going from 60-80ms -> 30-50ms
+    # and 120-180ms -> 85-105ms
+    scaled_const = (
+        (4 * np.pi * constants.G * rho_1 * r1**2) / (100 * u.Unit('km/s'))**2
+    ).to(1).value
+
     def fun(x, yvec, p):
         '''
         Integrand
@@ -114,9 +123,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         N0, sigma0 = np.exp(p)
         rho_0 = N0 * rho_1
         rho_0_units = rho_0.value
-        const = (
-            (4 * np.pi * constants.G * rho_0 * r1**2) / (sigma0 * u.Unit('km/s'))**2
-        ).to(1).value
+        const = scaled_const * N0 / (sigma0 / 100)**2
 
         y, dydx, M = yvec
 
@@ -158,10 +165,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         N0, sigma0 = np.exp(p)
         y, dydx, M = yvec
         _dydx, d2ydx2, dMdx = fun(x, yvec, p)
-        rho_0 = N0 * rho_1
-        const = (
-            (4 * np.pi * constants.G * rho_0 * r1**2) / (sigma0 * u.Unit('km/s'))**2
-        ).to(1).value
+        const = scaled_const * N0 / (sigma0 / 100)**2
 
         iso_density = np.exp(y)
         unitless_density = -(2 * dydx / x + d2ydx2) / const
@@ -227,6 +231,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
 
     # initial guess for y: 0 at x=0, -N0_guess at r1
     # TODO smarter initial conditions - make them the baryon-less solution
+    # FIXME add alternative option: just the NFW solution in this range
     if abc is None:
         y = -x * np.log(N0_guess)
         dydx = - np.ones_like(x) * np.log(N0_guess)
@@ -255,10 +260,10 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
     )
 
     if not result.success:
-        print(result)
+        #print(result)
         msg = f'BVP solver failed ' \
               f'with message {result.message}'
-        raise ValueError(msg)
+        raise SIDMSolutionError(msg, fit_result=result)
 
     N0, sigma0 = np.exp(result.p)
     sigma0 *= u.Unit('km/s')
