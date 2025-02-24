@@ -93,6 +93,8 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
                             start_radius=1e-3,
                             N0_guess=10, sigma_0_guess=600,
                             abc=None,
+                            x_init=None,
+                            y_guess=None,
                             **bvp_kwargs):
     '''
     Solves the 'outside-in' Jeans problem with baryons, using a boundary value solver
@@ -224,19 +226,23 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         ])
         return dbc_dya, dbc_dyb, dbc_dp
 
-    x = np.logspace(
-        np.log10(require_units(start_radius, 'kpc').value), np.log10(r1_kpc),
-        101
-    ) / r1_kpc
+    if x_init is None:
+        x = np.logspace(
+            np.log10(require_units(start_radius, 'kpc').value), np.log10(r1_kpc),
+            101
+        ) / r1_kpc
+    else:
+        x = x_init.copy()
 
     # initial guess for y: 0 at x=0, -N0_guess at r1
     # TODO smarter initial conditions - make them the baryon-less solution
     # FIXME add alternative option: just the NFW solution in this range
-    if abc is None:
+    if (y_guess is None) and (abc is None):
         y = -x * np.log(N0_guess)
         dydx = - np.ones_like(x) * np.log(N0_guess)
         M = x**3
-    else:
+        y_guess = np.vstack((y, dydx, M))
+    elif y_guess is None:
         from .sidm_profiles import y_interp, dy_interp, mass_interp_
         a, b, c = abc
         y = y_interp(x * b / a)
@@ -244,7 +250,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         M = mass_interp_(x * b / a) * (a / b)**3
         M /= np.max(M)
         N0_guess = np.exp(-np.min(y))
-    y_guess = np.vstack((y, dydx, M))
+        y_guess = np.vstack((y, dydx, M))
 
     # Dimensionality:
     #   - y(x) is a 3-vector (n = 3)

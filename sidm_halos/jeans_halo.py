@@ -161,7 +161,7 @@ class SIDMHaloSolution:
     an outer NFW 'skirt' and inner isothermal region.
     '''
     def __init__(self, outer_nfw: OuterNFW, isothermal_region: InnerIsothermal,
-                 r1, cse_decomp: CSERepr):
+                 r1, cse_decomp: CSERepr, baryon_profile = None):
         # should have:
         #   halo params:
         #       - M200m, c200m, z
@@ -175,6 +175,7 @@ class SIDMHaloSolution:
         self.isothermal_region = isothermal_region
         self.r1 = require_units(r1, 'kpc')
         self.cse_decomp = cse_decomp
+        self.baryon_profile = baryon_profile
 
     def __repr__(self):
         return '\n'.join([
@@ -306,6 +307,7 @@ class SIDMHaloSolution:
 
         return SIDMHaloSolution(
             halo, inner_soln, r1, jeans_CSE_decomp,
+            baryon_profile=baryon_profile,
         )
 
     @staticmethod
