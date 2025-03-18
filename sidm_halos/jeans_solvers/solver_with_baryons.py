@@ -3,6 +3,7 @@
 Solves the Jeans equations in the presence of a baryon matter component.
 '''
 
+import matplotlib.pyplot as plt
 from astropy import units as u
 from astropy import constants
 import numpy as np
@@ -90,7 +91,7 @@ def integrate_isothermal_region(N0, sigma0, cross_section, halo_age, baryon_prof
 
 
 def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
-                            start_radius=1e-3,
+                            start_radius=1e-4,
                             N0_guess=10, sigma_0_guess=600,
                             abc=None,
                             x_init=None,
@@ -127,13 +128,18 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         rho_0_units = rho_0.value
         const = scaled_const * N0 / (sigma0 / 100)**2
 
-        y, dydx, M = yvec
+        y, dydx, _M = yvec
+        # fig, ax = plt.subplots(nrows=3)
+        # ax[0].plot(x, y)
+        # ax[1].plot(x, dydx)
+        # ax[2].plot(x, M)
 
         iso_density = np.exp(y)
         unitless_density = iso_density + (baryon_profile(x*r1)/rho_0).to(1).value
         # FIXME: This line is not robust to extreme conditions, and seems to have
         # overflow errors sometimes, which cause the bvp solver to fail.
-        d2ydx2 = - 2 * dydx / x - const * unitless_density
+        #d2ydx2 = - 2 * dydx / x - const * unitless_density
+        d2ydx2 = - const * unitless_density
 
         rho_r = rho_0_units * np.exp(y)
         # dMdx scaled by enclosed mass
@@ -146,10 +152,10 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         '''
         Boundary conditions of jeans equation
         '''
-        logN0, logsigma0 = p
+        logN0, _logsigma0 = p
 
         ya, dydxa, Ma = yveca
-        yb, dydxb, Mb = yvecb
+        yb, _dydxb, Mb = yvecb
 
         # Need 5 degrees of constraint (see note below)
         # Boundary conditions:
@@ -165,12 +171,13 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         Jacobian of `fun`, it's derivatives with respect to `yvec` and `p`.
         '''
         N0, sigma0 = np.exp(p)
-        y, dydx, M = yvec
-        _dydx, d2ydx2, dMdx = fun(x, yvec, p)
+        y, _dydx, _M = yvec
+        _dydx, _d2ydx2, dMdx = fun(x, yvec, p)
         const = scaled_const * N0 / (sigma0 / 100)**2
 
         iso_density = np.exp(y)
-        unitless_density = -(2 * dydx / x + d2ydx2) / const
+        rho_0 = N0 * rho_1
+        unitless_density = iso_density + (baryon_profile(x*r1)/rho_0).to(1).value
 
         zeros = np.zeros_like(x)
         ones = np.ones_like(x)
@@ -179,7 +186,10 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
             # Derivatives of dydx
             [zeros, ones, zeros],
             # Derivatives of d2ydx2
-            [-const * np.exp(y), -2 / x, zeros],
+            # The singular term matrix S takes care of this
+            # [-const * np.exp(y), -2 / x, zeros],
+            # Derivatives of d2ydx2
+            [-const * np.exp(y), zeros, zeros],
             # Derivatives of dMdx
             [dMdx, zeros, zeros],
         ])
@@ -231,6 +241,7 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
             np.log10(require_units(start_radius, 'kpc').value), np.log10(r1_kpc),
             101
         ) / r1_kpc
+        x = np.concatenate(([0], x))
     else:
         x = x_init.copy()
 
@@ -243,6 +254,8 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         M = x**3
         y_guess = np.vstack((y, dydx, M))
     elif y_guess is None:
+        # With abc provided: Use the baryon-less solution as an
+        # initial condition
         from .sidm_profiles import y_interp, dy_interp, mass_interp_
         a, b, c = abc
         y = y_interp(x * b / a)
@@ -252,6 +265,12 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         N0_guess = np.exp(-np.min(y))
         y_guess = np.vstack((y, dydx, M))
 
+    # The singular term is d2y/dx2 = -2/x dy/dx
+    S = np.array([
+        [0, 0, 0],
+        [0, -2, 0],
+        [0, 0, 0],
+    ])
     # Dimensionality:
     #   - y(x) is a 3-vector (n = 3)
     #   - p is a 2-vector (k = 2)
@@ -260,8 +279,10 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
     # return a 5d vector
     result = solve_bvp(
         fun, bc, x, y_guess, p=np.log([N0_guess, sigma_0_guess]),
+        S=S,
         fun_jac=fun_jac,
         bc_jac=bc_jac,
+        # verbose=2,
         **bvp_kwargs,
     )
 
