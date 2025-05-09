@@ -258,9 +258,9 @@ def solve_outside_in_as_bvp(r1, Menc, rho_1, halo_age, baryon_profile,
         # initial condition
         from .sidm_profiles import y_interp, dy_interp, mass_interp_
         a, b, c = abc
-        y = y_interp(x * b / a)
-        dydx = dy_interp(x * b / a) * (b / a)
-        M = mass_interp_(x * b / a) * (a / b)**3
+        y = y_interp(x * a / b)
+        dydx = dy_interp(x * a / b) * (b / a)
+        M = mass_interp_(x * a / b)
         M /= np.max(M)
         N0_guess = np.exp(-np.min(y))
         y_guess = np.vstack((y, dydx, M))
