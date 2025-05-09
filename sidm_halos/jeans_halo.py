@@ -2,10 +2,6 @@ import numpy as np
 from astropy import units as u
 from astropy import constants
 from colossus.halo import profile_nfw
-try:
-    from lenstronomy.Cosmo.lens_cosmo import LensCosmo
-except ImportError:
-    print('lenstronomy not available')
 from scipy import optimize as opt
 from scipy.special import spence
 
@@ -221,7 +217,10 @@ class SIDMHaloSolution:
 
     @staticmethod
     def solve_outside_in(M, c, r1, z, mdef='200m', baryon_profile=None,
-                         lsq_fitter_kwargs={}, solver='bvp', solver_kwargs={}):
+                         N0_init=None, sigma_0_init=None,
+                         x_init=None, y_init=None,
+                         start_kpc=1e-2,
+                         lsq_fitter_kwargs={}, solver_kwargs={}):
         '''
         Constructs a SIDM halo via the 'outside-in' method: taking a known NFW
         M200/c200 and solving what the inner isothermal part of the halo should
@@ -289,41 +288,56 @@ class SIDMHaloSolution:
         Menc = halo.mass_enclosed_3d(r1)
         rho_1 = halo.density_3d(r1)
 
-        if solver == 'ivp':
-            # TODO allow tuning inner radius etc
-            result_integrand, result_params, result_root = _baryons_solver.solve_outside_in(
-                r1, Menc, rho_1, halo_age, baryon_profile,
-                **solver_kwargs
-            )
-        elif solver == 'bvp':
-            # get the initial conditions for the baryon-less case
-            guess = _sidm_solved.guess_b_c(a)
-            b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
-            rho_0 = halo.rho_s*c
-            r_0 = b * halo.r_s
+        # get the initial conditions for the baryon-less case
+        guess = _sidm_solved.guess_b_c(a)
+        b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
+        rho_0 = halo.rho_s*c
+        r_0 = b * halo.r_s
 
-            # if we don't have a user-specified guess of sigma0,
-            # use the actual solution from the baryon-less case
-            if 'sigma_0_guess' not in solver_kwargs:
-                sigma_0_guess = np.sqrt(
-                    4 * np.pi * constants.G
-                    * rho_0 * r_0**2
-                ).to_value('km/s')
-                solver_kwargs['sigma_0_guess'] = sigma_0_guess
-
-            result_integrand, result_params = _baryons_solver.solve_outside_in_as_bvp(
-                r1, Menc, rho_1, halo_age, baryon_profile,
-                abc=(a, b, c),
-                **solver_kwargs
-            )
+        error_message = (
+            "must provide either ALL or NONE of (N0_init, sigma_0_init, x_init, y_init)"
+        )
+        if N0_init is None:
+            assert (sigma_0_init is None and x_init is None and y_init is None), error_message
+            has_initial_conditions = False
         else:
-            raise ValueError(f'unkown outside-in solver {solver}')
+            assert not (sigma_0_init is None or x_init is None or y_init is None), error_message
+            has_initial_conditions = True
+
+        # if we don't have a user-specified guess of sigma0,
+        # use the actual solution from the baryon-less case
+        if not has_initial_conditions:
+            r1_kpc = r1.to_value('kpc')
+            x_init = np.logspace(
+                np.log10(require_units(start_kpc, 'kpc').value), np.log10(r1_kpc),
+                101
+            ) / r1_kpc
+            x_init = np.concatenate(([0], x_init))
+
+            sigma_0_init = np.sqrt(
+                4 * np.pi * constants.G
+                * rho_0 * r_0**2
+            ).to_value('km/s')
+
+            from .jeans_solvers.sidm_profiles import y_interp, dy_interp, mass_interp_
+            y = y_interp(x_init * a / b)
+            dydx = dy_interp(x_init * a / b) * (b / a)
+            M = mass_interp_(x_init * a / b)
+            M /= np.max(M)
+            N0_init = np.exp(-np.min(y))
+            y_init = np.vstack((y, dydx, M))
+
+        result_integrand, result_params = _baryons_solver.solve_outside_in_as_bvp(
+            r1, Menc, rho_1, halo_age, baryon_profile,
+            N0_guess=N0_init, sigma_0_guess=sigma_0_init,
+            x_init=x_init, y_init=y_init,
+            **solver_kwargs
+        )
 
         inner_soln = InnerIsothermal(
             cross_section=result_params['cross_section'], sigma_0=result_params['sigma_0'],
             rho_0=result_params['rho_0'], halo_age=halo_age,
             # See comment above the _result_integrand_wrapper class
-            # solution_interp=lambda x: result_integrand.sol(x)[0],
             solution_interp=_result_integrand_wrapper(result_integrand),
             rscale_interp=result_params['r0'],
             mag_interp=result_params['rho_0'],
