@@ -7,6 +7,7 @@ try:
 except ImportError:
     print('lenstronomy not available')
 from scipy import optimize as opt
+from scipy.special import spence
 
 from . import cosmology
 from .util import require_units
@@ -81,13 +82,45 @@ class OuterNFW:
 
     @property
     def rho_s(self):
+        '''
+        NFW scale density
+        '''
         h = cosmology.h()
         return self.halo.par['rhos']*h**2 * u.Unit('Msun kpc-3')
 
     @property
     def r_s(self):
+        '''
+        NFW scale radius
+        '''
         h = cosmology.h()
         return self.halo.par['rs']/h * u.Unit('kpc')
+
+    @property
+    def Vmax(self):
+        '''
+        Maximum circular velocity of particle orbits
+        '''
+        return self.halo.Vmax()[0]*u.Unit('km/s')
+
+    def sigma_0(self, r):
+        '''
+        The predicted isothermal velocity dispersion of dark matter particles
+        in an NFW halo, at a radius r.
+
+        See equation 4 of Robertson 2021:
+        https://ui.adsabs.harvard.edu/abs/2021MNRAS.501.4610R/abstract
+        '''
+        r = require_units(r, 'kpc')
+        x = (r / self.r_s).to(1).value
+        def g(c):
+            return 1/(np.log(1 + c) - c/(1 + c))
+        return np.sqrt(
+            0.5 * g(self.c)*self.c * x * (1 + x)**2 * (constants.G * self.M/(self.c*self.r_s))
+            * (np.pi**2 - np.log(x) - 1/x - 1/(1 + x)**2 - 6/(1 + x) + (1 + 1/x**2 - 4/x - 2/(1 + x))
+               * np.log(1 + x) + 3 * np.log(1 + x)**2 + 6*spence(1+x)
+              )
+        ).to('km/s')
 
     def __repr__(self):
         return '\n'.join([
@@ -96,7 +129,8 @@ class OuterNFW:
             f'\tc{self.mdef:<4} = {self.c:.2f}',
             f'\tz     = {self.z:.2f}',
             f'\trho_s = {self.rho_s:.3e}',
-            f'\tr_s   = {self.r_s:.2f}'
+            f'\tr_s   = {self.r_s:.2f}',
+            f'\tVmax  = {self.Vmax:.2f}',
         ])
 
 
@@ -468,6 +502,9 @@ class SIDMHaloSolution:
         ).to('Msun')
 
     def projected_density_2d(self, r):
+        '''
+        Projected 2d density at a radius r, in units of Msun / kpc2
+        '''
         r = require_units(r, 'kpc')
         x = (r / self.outer_nfw.r_s).to(1).value
         return (
