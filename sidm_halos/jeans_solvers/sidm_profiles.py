@@ -43,7 +43,8 @@ def _jeans_function_integrand(y, x):
     return np.array([dy, ddy])
 
 
-xspan = np.logspace(-3, 2, 10000)
+#xspan = np.logspace(-3, 2, 10000)
+xspan = np.logspace(-4, 2, 100_000)
 start_x = (xspan[0])
 solution = odeint(_jeans_function_integrand,
                   y0=[y_approx(start_x), dy_approx(start_x)],
@@ -92,7 +93,8 @@ def mass_integrand(y_, x):
     return x*x*np.exp(y(x))
 
 
-xs_mass = np.concatenate([[0.0], np.logspace(-3, 2, 9999)])
+#xs_mass = np.concatenate([[0.0], np.logspace(-3, 2, 9999)])
+xs_mass = np.concatenate([[0.0], np.logspace(-4, 2, 50_000)])
 
 mass_integrated = odeint(mass_integrand, y0=[0], t=xs_mass).flatten()
 mass_interp_ = interp1d(xs_mass, mass_integrated, fill_value='extrapolate')

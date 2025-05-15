@@ -203,17 +203,92 @@ class SIDMHaloSolution:
         #   CSE decomposition of solution
         self.outer_nfw = outer_nfw
         self.isothermal_region = isothermal_region
-        self.r1 = require_units(r1, 'kpc')
+        self._r1 = require_units(r1, 'kpc')
         self.cse_decomp = cse_decomp
         self.baryon_profile = baryon_profile
 
     def __repr__(self):
         return '\n'.join([
             'SIDM halo solution with:',
-            f'\tr1   = {self.r1:.2f}',
+            f'\tr1   = {self._r1:.2f}',
             '\t' + '\n\t'.join(repr(self.isothermal_region).split('\n')),
             '\t' + '\n\t'.join(repr(self.outer_nfw).split('\n')),
         ])
+
+    # NFW halo properties
+    @property
+    def mass(self):
+        '''
+        NFW halo mass
+        '''
+        return self.outer_nfw.M
+
+    @property
+    def concentration(self):
+        '''
+        NFW halo concentration
+        '''
+        return self.outer_nfw.c
+
+    @property
+    def z(self):
+        '''
+        Halo redshift
+        '''
+        return self.outer_nfw.z
+
+    @property
+    def mdef(self):
+        return self.outer_nfw.mdef
+
+    @property
+    def nfw_Vmax(self):
+        return self.outer_nfw.Vmax
+
+    def nfw_sigma_0(self, r):
+        '''
+        Analytic NFW particle velocity dispersion at radius r.
+
+        N.B.: This is only meaningful at r > r1
+        '''
+        return self.outer_nfw.sigma_0(r)
+
+    ## SIDM properties
+    @property
+    def r1(self):
+        '''
+        Radius within which SIDM is dominant
+        '''
+        return self._r1
+
+    @property
+    def N0(self):
+        return self.isothermal_region.N0
+
+    @property
+    def cross_section(self):
+        '''
+        Effective SIDM cross section in cm2/g
+        '''
+        return self.isothermal_region.cross_section
+
+    @property
+    def sidm_sigma_0(self):
+        '''
+        Isothermal velocity dispersion of the inner SIDM-dominated region
+        '''
+        return self.isothermal_region.sigma_0
+
+    @property
+    def rho_0(self):
+        '''
+        Peak density of the central core
+        '''
+        return self.isothermal_region.rho_0
+
+    @property
+    def halo_age(self):
+        return self.isothermal_region.halo_age
 
     @staticmethod
     def solve_outside_in(M, c, r1, z, mdef='200m', baryon_profile=None,
