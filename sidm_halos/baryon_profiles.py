@@ -63,10 +63,10 @@ class DPIEProfile(BaryonProfile):
             M * (ra + rs)
             / (2 * np.pi**2 * ra**2 * rs**2)
         ).to('Msun kpc-3')
-        sigma_0_e07 = (
-            (4 / 3) * constants.G * np.pi * ra**2 * rs**3
-            / ((rs - ra) * (ra + rs)**3)
-        ).to('km/s')
+        sigma_0_e07 = np.sqrt((
+            (4 / 3) * constants.G * np.pi * ra**2 * rs**3 * rho_0
+            / ((rs - ra) * (ra + rs)**2)
+        )).to('km/s')
         return cls(M=M, rho_0=rho_0, sigma_0_e07=sigma_0_e07, ra=ra, rs=rs)
 
     @classmethod
@@ -77,10 +77,10 @@ class DPIEProfile(BaryonProfile):
         Mtot = (2 * np.pi**2 * rho_0 * ra**2 * rs**2 / (
             ra + rs
         )).to('Msun')
-        sigma_0_e07 = (
-            (4 / 3) * constants.G * np.pi * ra**2 * rs**3
-            / ((rs - ra) * (ra + rs)**3)
-        ).to('km/s')
+        sigma_0_e07 = np.sqrt((
+            (4 / 3) * constants.G * np.pi * ra**2 * rs**3 * rho_0
+            / ((rs - ra) * (ra + rs)**2)
+        )).to('km/s')
         return cls(M=Mtot, rho_0=rho_0, sigma_0_e07=sigma_0_e07, ra=ra, rs=rs)
 
     @property
@@ -92,7 +92,7 @@ class DPIEProfile(BaryonProfile):
         return self._rs
 
     @property
-    def Mtot(self):
+    def mass(self):
         return self._mass
 
     @property

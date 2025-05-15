@@ -43,7 +43,6 @@ def _jeans_function_integrand(y, x):
     return np.array([dy, ddy])
 
 
-#xspan = np.logspace(-3, 2, 10000)
 xspan = np.logspace(-4, 2, 100_000)
 start_x = (xspan[0])
 solution = odeint(_jeans_function_integrand,
@@ -52,6 +51,7 @@ solution = odeint(_jeans_function_integrand,
 
 y_interp = interp1d(xspan, solution[:, 0], fill_value='extrapolate')
 dy_interp = interp1d(xspan, solution[:, 1], fill_value='extrapolate')
+x_from_y_interp = interp1d(solution[:, 0], xspan)
 
 
 def y(x):
@@ -93,7 +93,6 @@ def mass_integrand(y_, x):
     return x*x*np.exp(y(x))
 
 
-#xs_mass = np.concatenate([[0.0], np.logspace(-3, 2, 9999)])
 xs_mass = np.concatenate([[0.0], np.logspace(-4, 2, 50_000)])
 
 mass_integrated = odeint(mass_integrand, y0=[0], t=xs_mass).flatten()
@@ -145,20 +144,20 @@ def mass_interp(x):
 # $$
 
 
-def solve_nfw(a):
-    '''
-    Inverts the unitless NFW profile:
-
-        f(x) = 1 / (x (1 + x)^2)
-
-    I.e., gives x such that f(x) = a.
-    '''
-    term = 27*a**2 + 2*a**3 - 3*a**2*np.sqrt(3*(27 + 4*a))
-    return (
-        -4
-        + 2*a/((term/2)**(1/3))
-        + 2**(2/3)*term**(1/3) / a
-    ) / 6
+#def solve_nfw(a):
+#    '''
+#    Inverts the unitless NFW profile:
+#
+#        f(x) = 1 / (x (1 + x)^2)
+#
+#    I.e., gives x such that f(x) = a.
+#    '''
+#    term = 27*a**2 + 2*a**3 - 3*a**2*np.sqrt(3*(27 + 4*a))
+#    return (
+#        -4
+#        + 2*a/((term/2)**(1/3))
+#        + 2**(2/3)*term**(1/3) / a
+#    ) / 6
 
 
 # ### Unitless Jeans method solver
@@ -216,23 +215,33 @@ def _unitless_jeans_residual(x, a):
     exp_density = 1/(a * (1 + a)**2)
     actual_density = c * np.exp(y(a / b))
 
-    return 10*np.log([exp_mass / actual_mass, exp_density / actual_density])
+    # These checks are to avoid divide-by-zero errors
+    actual_density_zero = np.abs(actual_density) < 1e-8
+    actual_mass_zero = np.abs(actual_mass) < 1e-8
+    if not (actual_density_zero or actual_mass_zero):
+        return 10*np.log([exp_mass / actual_mass, exp_density / actual_density])
+    if actual_density_zero and actual_mass_zero:
+        return 10 * np.array([exp_mass, exp_density])
+    if actual_mass_zero and not actual_density_zero:
+        return 10 * np.array([exp_mass, np.log(exp_density / actual_density)])
+    assert actual_density_zero and not actual_mass_zero
+    return 10 * np.array([np.log(exp_mass / actual_mass), exp_density])
 
 
-def _unitless_jeans_jacobian(x, a):
-    log_b, log_c = x
-    b, c = np.exp([log_b, log_c])
-
-    y_ = y(a/b)
-    dy_ = dy_interp(a/b)
-
-    # Derivatives:
-    #   df0/dx0    df0/dx1
-    #   df1/dx0    df1/dx1
-    return np.array([
-        [10 * (a/b)**3 * np.exp(y_) / mass_interp(a/b), -10],
-        [10 * dy_ * (a/b), -10]
-    ])
+#def _unitless_jeans_jacobian(x, a):
+#    log_b, log_c = x
+#    b, c = np.exp([log_b, log_c])
+#
+#    y_ = y(a/b)
+#    dy_ = dy_interp(a/b)
+#
+#    # Derivatives:
+#    #   df0/dx0    df0/dx1
+#    #   df1/dx0    df1/dx1
+#    return np.array([
+#        [10 * (a/b)**3 * np.exp(y_) / mass_interp(a/b), -10],
+#        [10 * dy_ * (a/b), -10]
+#    ])
 
 
 def solve_unitless_jeans(a, guess=None):
@@ -283,7 +292,7 @@ def solve_unitless_jeans(a, guess=None):
 # Solve boundary conditions on a large grid of a values
 # That way - we will have high-quality initial guesses for (b, c)
 # TODO this breaks at a >= 4: the solutions no longer work. Get rid of them
-a_range = np.logspace(-2, 1, 1000)
+a_range = np.logspace(-2, np.log10(4), 3_000)
 solved_b_c = []
 guess = None
 for a in a_range:
@@ -292,8 +301,9 @@ for a in a_range:
         solved_b_c.append(soln_b_c)
         # Keep this as the guess for next time
         guess = soln_b_c
-    except ValueError:
+    except ValueError as err:
         print('jeans solving failed at a =', a)
+        print(err)
         solved_b_c.append([0.0, 0.0])
 
 solved_b_c = np.array(solved_b_c)
@@ -316,82 +326,15 @@ def guess_b_c(a):
             raise ValueError(f'a too high {a:.2e}, no physical solution')
 
 
-def unitless_jeans_profile(xs, a, b, c):
-    '''
-    Computes the Jeans method profile: NFW for x > a,
-    isothermal jeans for x < a.
-    '''
-    # xs are r/rs
-    output = np.empty_like(xs)
-    output[xs >= a] = 1/(xs[xs >= a] * (1 + xs[xs >= a])**2)
-    output[xs < a] = (
-        c*np.exp(y(xs[xs < a]/b))
-    )
-    return output
-
-
-def solve_jeans_profile(cosmo, z, M200c, concentration, weighted_cross_section, halo_age):
-    '''
-
-    :param cosmo: Astropy cosmology object
-    :param z: Redshift of halo
-    :param M200c: Halo mass as M200c
-    :param c: NFW halo concentration
-    :param halo_age: Age of halo
-
-    :return: 2-tuple of (param dict, profile function)
-    '''
-    # rho_NFW, rs, r200 = cosmo.nfwParam_physical(M200c, concentration)
-    # Find boundary between NFW and isothermal
-    #   Msun / Mpc**3
-    rho_crit = cosmo.critical_density(z)
-    # print('{:.3e}'.format(rho_crit))
-    # print(concentration)
-    rho_NFW = (
-        rho_crit * (200 / 3) * (concentration**3
-            / (np.log(1 + concentration) - concentration/(1 + concentration)))
-    )
-    # print('{:.3e}'.format(rho_NFW.to('Msun/Mpc3')))
-    density_param = (weighted_cross_section * halo_age * rho_NFW) \
-        .to(u.dimensionless_unscaled).value**-1
-    a = solve_nfw(
-        density_param
-    )
-
-    # Compute meaningful distances in physical units
-    #   Mpc
-    r200c = ((3 / (200 * 4 * np.pi)) * (M200c / rho_crit))**(1/3)
-    r200c = r200c.to('kpc')
-    # print(r200c)
-    rs = r200c / concentration
-    r1 = a * rs
-
-    # Solve the boundary conditions in unitless way
-    guess = [_interp_b_guess(a), _interp_c_guess(a)]
-    b, c = solve_unitless_jeans(a, guess=guess)
-
-    # Convert back to physical units
-    rho_jeans = c * rho_NFW
-    r0 = b * rs
-
-    params = {
-        'M200c': M200c, 'concentration': concentration,
-        'rs': rs, 'r1': r1, 'rho_NFW': rho_NFW,
-        'rho_jeans': rho_jeans, 'r0': r0
-    }
-
-    def jeans_solution(r):
-        '''
-        Jeans method halo density profile.
-
-        :param r: 3D radius from halo center. Assumed to be kpc.
-
-        :returns: 3D halo density. An array of the same shape as r.
-        '''
-        # Convert units
-        if not isinstance(r, u.Quantity):
-            r *= u.kpc
-        xs = (r / rs).to(1).value
-        return rho_NFW * unitless_jeans_profile(xs, a, b, c)
-
-    return params, jeans_solution
+#def unitless_jeans_profile(xs, a, b, c):
+#    '''
+#    Computes the Jeans method profile: NFW for x > a,
+#    isothermal jeans for x < a.
+#    '''
+#    # xs are r/rs
+#    output = np.empty_like(xs)
+#    output[xs >= a] = 1/(xs[xs >= a] * (1 + xs[xs >= a])**2)
+#    output[xs < a] = (
+#        c*np.exp(y(xs[xs < a]/b))
+#    )
+#    return output

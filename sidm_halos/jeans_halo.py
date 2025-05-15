@@ -10,6 +10,8 @@ from .util import require_units
 from .cse.cse_decomp import (
     decompose_integrated_jeans, decompose_analytic_jeans, CSERepr
 )
+from .baryon_profiles import BaryonProfile
+from .jeans_solvers.error import SIDMSolutionError
 from .jeans_solvers import sidm_profiles as _sidm_solved
 from .jeans_solvers import solver_with_baryons as _baryons_solver
 
@@ -242,6 +244,10 @@ class SIDMHaloSolution:
         return self.outer_nfw.mdef
 
     @property
+    def r_s(self):
+        return self.outer_nfw.r_s
+
+    @property
     def nfw_Vmax(self):
         return self.outer_nfw.Vmax
 
@@ -290,6 +296,13 @@ class SIDMHaloSolution:
     def halo_age(self):
         return self.isothermal_region.halo_age
 
+    @property
+    def colossus_halo(self):
+        '''
+        Returns the Colossus NFW halo object representing the outer 'skirt'
+        '''
+        return self.outer_nfw.halo
+
     @staticmethod
     def solve_outside_in(M, c, r1, z, mdef='200m', baryon_profile=None,
                          N0_init=None, sigma_0_init=None,
@@ -319,6 +332,10 @@ class SIDMHaloSolution:
         a = (r1 / halo.r_s).to(1).value
 
         if baryon_profile is None:
+            if a > 4:
+                raise SIDMSolutionError(
+                    f'no baryon-less solution for (r1/r_s) = {a:.2f} - need a < 4'
+                )
             guess = _sidm_solved.guess_b_c(a)
             b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
 
@@ -402,8 +419,12 @@ class SIDMHaloSolution:
             N0_init = np.exp(-np.min(y))
             y_init = np.vstack((y, dydx, M))
 
+        if isinstance(baryon_profile, BaryonProfile):
+            baryon_func = baryon_profile.density_3d
+        else:
+            baryon_func = baryon_profile
         result_integrand, result_params = _baryons_solver.solve_outside_in_as_bvp(
-            r1, Menc, rho_1, halo_age, baryon_profile,
+            r1, Menc, rho_1, halo_age, baryon_func,
             N0_guess=N0_init, sigma_0_guess=sigma_0_init,
             x_init=x_init, y_init=y_init,
             **solver_kwargs
@@ -458,14 +479,8 @@ class SIDMHaloSolution:
                 N0 / (4 * sigma_0 / np.sqrt(np.pi) * cross_section * halo_age)
             ).to('Msun kpc-3')
 
-            # FIXME get more exact x1
             # x1 = r1 / r0
-            idx_soln = np.searchsorted(
-                # Sign funniness for searchsorted to do the right thing
-                -_sidm_solved.solution[:, 0],
-                np.log(N0)
-            )
-            x1 = _sidm_solved.xspan[idx_soln]
+            x1 = _sidm_solved.x_from_y_interp(-np.log(N0))
 
             r_0 = require_units(
                 sigma_0 / np.sqrt(4 * np.pi * constants.G * rho_0),
@@ -508,6 +523,7 @@ class SIDMHaloSolution:
                 r_1, jeans_CSE_decomp,
             )
 
+        raise NotImplementedError('inside-out baryon solver currently not implemented!')
         # Now the case with a baryon profile
         # TODO allow tuning inner radius etc
         integrated_result, params =_baryons_solver.integrate_isothermal_region(
@@ -540,33 +556,6 @@ class SIDMHaloSolution:
             outer_nfw, inner_soln,
             r_1, jeans_CSE_decomp,
         )
-
-    @property
-    def cross_section(self):
-        return self.isothermal_region.cross_section
-
-    @property
-    def sigma_0(self):
-        return self.isothermal_region.sigma_0
-
-    @property
-    def rho_0(self):
-        return self.isothermal_region.rho_0
-
-    @property
-    def halo(self):
-        '''
-        Returns the Colossus NFW halo object representing the outer 'skirt'
-        '''
-        return self.outer_nfw.halo
-
-    @property
-    def r_s(self):
-        return self.outer_nfw.r_s
-
-    @property
-    def rho_s(self):
-        return self.outer_nfw.rho_s
 
     def density_3d(self, r):
         '''
