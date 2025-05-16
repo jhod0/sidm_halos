@@ -248,6 +248,10 @@ class SIDMHaloSolution:
         return self.outer_nfw.r_s
 
     @property
+    def rho_s(self):
+        return self.outer_nfw.rho_s
+
+    @property
     def nfw_Vmax(self):
         return self.outer_nfw.Vmax
 
@@ -332,11 +336,12 @@ class SIDMHaloSolution:
         a = (r1 / halo.r_s).to(1).value
 
         if baryon_profile is None:
-            if a > 4:
+            try:
+                guess = _sidm_solved.guess_b_c(a)
+            except ValueError:
                 raise SIDMSolutionError(
-                    f'no baryon-less solution for (r1/r_s) = {a:.2f} - need a < 4'
+                    f'no SIDM solution: (r1/rs) = {a:.2f} is too large'
                 )
-            guess = _sidm_solved.guess_b_c(a)
             b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
 
             jeans_CSE_decomp, lsq_soln = decompose_analytic_jeans(
@@ -381,7 +386,12 @@ class SIDMHaloSolution:
         rho_1 = halo.density_3d(r1)
 
         # get the initial conditions for the baryon-less case
-        guess = _sidm_solved.guess_b_c(a)
+        try:
+            guess = _sidm_solved.guess_b_c(a)
+        except ValueError:
+            raise SIDMSolutionError(
+                f'no SIDM solution: (r1/rs) = {a:.2f} is too large'
+            )
         b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
         rho_0 = halo.rho_s*c
         r_0 = b * halo.r_s
