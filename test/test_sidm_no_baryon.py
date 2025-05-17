@@ -4,22 +4,23 @@ from sidm_halos import SIDMHaloSolution, SIDMSolutionError, OuterNFW
 
 from check_halo import check_halo
 
-@pytest.mark.parametrize("M,c,r1,z,mdef", [
-    (5e14, 5, 50, 0.3, '200m',),
-    (1e14, 3, 100, 0.5, '200m',),
-    (5e13, 10, 10, 0.6, '200m',),
-    (1e15, 10, 100, 0.2, '200m',),
-    (1e15, 3, 200, 1, '200m',),
-    (1e15, 5, 15, 0.5, '200m',),
-    (1e13, 8, 5, 0.5, '200m',),
-    (1e13, 12, 5, 0.2, '200m',),
-    (1e15, 10, 100, 0.2, 'vir',),
-    (1e15, 3, 200, 1, 'vir',),
-    (1e15, 5, 15, 0.5, 'vir',),
-    (1e15, 10, 100, 0.2, '200c',),
-    (1e15, 3, 200, 1, '200c',),
-    (1e15, 5, 15, 0.5, '200c',),
+@pytest.mark.parametrize("M,c,r1,z", [
+    (5e14, 5, 50, 0.3),
+    (1e14, 3, 100, 0.5),
+    (5e13, 10, 10, 0.6),
+    (1e15, 10, 100, 0.2),
+    (1e15, 3, 200, 1),
+    (1e15, 5, 15, 0.5),
+    (1e13, 8, 5, 0.5),
+    (1e13, 12, 5, 0.2),
+    (1e15, 10, 100, 0.2),
+    (1e15, 3, 200, 1),
+    (1e15, 5, 15, 0.5),
+    (1e15, 10, 100, 0.2),
+    (1e15, 3, 200, 1),
+    (1e15, 5, 15, 0.5),
 ])
+@pytest.mark.parametrize('mdef', ['200m', '200c', 'vir'])
 def test_simple(M, c, r1, z, mdef):
     halo_soln = SIDMHaloSolution.solve_outside_in(
         M=M, c=c, r1=r1, z=z,

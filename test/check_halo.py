@@ -21,6 +21,7 @@ def check_halo(halo: SIDMHaloSolution):
     halo.r1
     halo.nfw_Vmax
     halo.halo_age
+    halo.colossus_halo
 
     assert halo.N0 > 1
     assert halo.cross_section > 0*u.Unit('cm2/g')
