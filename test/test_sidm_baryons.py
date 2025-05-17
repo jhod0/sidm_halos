@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from astropy import units as u
 import warnings
-from sidm_halos import SIDMHaloSolution, SIDMSolutionError, OuterNFW
+from sidm_halos import SIDMHaloSolution, SIDMSolutionError
 from sidm_halos.baryon_profiles import DPIEProfile
 from sidm_halos import require_units
 

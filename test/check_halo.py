@@ -1,7 +1,6 @@
 import numpy as np
-import pytest
 from astropy import units as u
-from sidm_halos import SIDMHaloSolution, SIDMSolutionError, OuterNFW
+from sidm_halos import SIDMHaloSolution
 
 def check_halo(halo: SIDMHaloSolution):
     '''
