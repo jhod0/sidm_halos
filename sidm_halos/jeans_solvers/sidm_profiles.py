@@ -7,15 +7,10 @@ Uses the semi-analytic Jeans approximation method, described in depth in
 Robertson 2021: https://ui.adsabs.harvard.edu/abs/2021MNRAS.501.4610R/abstract
 '''
 
-
-
-from astropy import units as u
 import numpy as np
-
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 from scipy.optimize import root
-
 import warnings
 
 

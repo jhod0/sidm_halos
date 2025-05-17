@@ -473,7 +473,6 @@ class SIDMHaloSolution:
 
         More efficient than the outside-in method.
         '''
-        h = cosmology.h()
         halo_age = cosmology.halo_age(z)
         cross_section = require_units(cross_section, 'cm2/g')
         sigma_0 = require_units(sigma_0, 'km/s')

@@ -1,5 +1,4 @@
 from astropy import units as u
-from astropy import constants
 import numpy as np
 
 

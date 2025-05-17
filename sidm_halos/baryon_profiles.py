@@ -30,7 +30,7 @@ class CallableProfile(BaryonProfile):
             def wrapper(r):
                 r = require_units(r, 'kpc')
                 return u.Unit('Msun kpc-3') * fn(r.value)
-            self._func = fn
+            self._func = wrapper
 
     def density_3d(self, r):
         r = require_units(r, 'kpc')
