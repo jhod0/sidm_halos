@@ -44,3 +44,7 @@ def check_halo(halo: SIDMHaloSolution):
     assert np.isclose(rho_1, halo.density_3d(halo.r1), rtol=rtol_cse)
     assert np.isclose(halo.rho_0, halo.density_3d(0), rtol=rtol_cse)
     assert np.isclose(halo.mass_enclosed_3d(halo.r1), halo.outer_nfw.mass_enclosed_3d(halo.r1), rtol=rtol_cse)
+
+    # Make sure the total NFW mass is conserved
+    Rdef = halo.r_s * halo.concentration
+    assert np.isclose(halo.mass_enclosed_3d(Rdef), halo.mass, rtol=1e-2)

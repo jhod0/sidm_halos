@@ -598,6 +598,16 @@ class SIDMHaloSolution:
             self.outer_nfw.r_s * self.outer_nfw.rho_s * self.cse_decomp.proj_density(x)
         ).to('Msun kpc-2')
 
+    def projected_mass_2d(self, r):
+        '''
+        Projected mass enclosed within a circle of radius r.
+        '''
+        r = require_units(r, 'kpc')
+        x = (r / self.r_s).to(1).value
+        return (
+            self.rho_s * self.r_s**3 * self.cse_decomp.proj_mass(x)
+        ).to('Msun')
+
     def to_lenstronomy(self, lens_cosmo):
         '''
         Converts the CSE decomposition of this halo into a lenstronomy format,

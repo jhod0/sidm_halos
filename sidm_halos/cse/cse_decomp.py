@@ -2,8 +2,8 @@ import numpy as np
 import time
 from scipy import optimize as opt
 
-from .cse_3d import (rhoCSE_3d, rhoCSE_m_enc)
-from .cse_2d import kappaCSE_2d
+from .cse_3d import rhoCSE_3d, rhoCSE_m_enc
+from .cse_2d import kappaCSE_2d, kappaCSE_m_enc
 from ..jeans_solvers import sidm_profiles as _sidm_solved
 
 
@@ -22,6 +22,12 @@ class CSERepr:
 
     def proj_density(self, r):
         return self._r_scale * self._magnitude * kappaCSE_2d(
+            r/self._r_scale, self._esses, weights=self._weights
+        )
+
+    def proj_mass(self, r):
+        # TODO CHECK!!!
+        return self._r_scale * self._magnitude * kappaCSE_m_enc(
             r/self._r_scale, self._esses, weights=self._weights
         )
 
