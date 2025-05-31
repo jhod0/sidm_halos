@@ -261,8 +261,21 @@ class SIDMHaloSolution:
                 **solver_kwargs
             )
         elif solver == 'bvp':
+            # get the initial conditions for the baryon-less case
             guess = _sidm_solved.guess_b_c(a)
             b, c = _sidm_solved.solve_unitless_jeans(a, guess=guess)
+            rho_0 = halo.rho_s*c
+            r_0 = b * halo.r_s
+
+            # if we don't have a user-specified guess of sigma0,
+            # use the actual solution from the baryon-less case
+            if 'sigma_0_guess' not in solver_kwargs:
+                sigma_0_guess = np.sqrt(
+                    4 * np.pi * constants.G
+                    * rho_0 * r_0**2
+                ).to_value('km/s')
+                solver_kwargs['sigma_0_guess'] = sigma_0_guess
+
             result_integrand, result_params = _baryons_solver.solve_outside_in_as_bvp(
                 r1, Menc, rho_1, halo_age, baryon_profile,
                 abc=(a, b, c),

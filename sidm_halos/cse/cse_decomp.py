@@ -42,6 +42,8 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
     Decomposes a 3D density profile `func` into a sum of CSE profiles, with fixed size parameters `esses`.
     '''
     truth = func(xs)
+    truth_zero_mask = truth == 0.0
+    zero_offset = 1e-12
     esses = np.array(esses)
 
     if fixed_weights is not None:
@@ -59,7 +61,7 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
         weights[fixed_weights] = init_guess[fixed_weights]
         weights[~fixed_weights] = weights_sample
         calc = rhoCSE_3d(xs, esses, weights=weights)
-        return ((calc / truth) - 1) / sigma
+        return (((calc + zero_offset*truth_zero_mask )/ (truth + zero_offset*truth_zero_mask)) - 1) / sigma
 
     def jacobian(weights_sample):
         weights = np.empty_like(esses)
@@ -67,7 +69,7 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
         weights[~fixed_weights] = weights_sample
         all_bases = rhoCSE_3d(xs, esses, weights=np.ones_like(weights), collapse=False)
         # The *weights is for the log-sampling
-        return ((all_bases.T / truth).T / sigma)[:, ~fixed_weights]
+        return ((all_bases.T / (truth + zero_offset*truth_zero_mask)).T / sigma)[:, ~fixed_weights]
 
     # if init_guess is not None:
     #     logweights_guess = np.log(init_guess)
@@ -82,13 +84,27 @@ def decompose_cse(func, xs, esses, init_guess=None, sigma=1e-4, return_ls_obj=Fa
     # print(init_guess)
     # print(f'init guess: {init_guess[~fixed_weights]}')
     x_scale = (esses**4)[~fixed_weights]
-    lsq_soln = opt.least_squares(
-        residual, init_guess[~fixed_weights], jac=jacobian,
-        x_scale=x_scale,
-        verbose=verbose,
-        bounds=bounds,
-        **lsq_kwargs
-    )
+    # FIXME: try opt.nnls: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html#scipy.optimize.nnls
+    # non-negative by construction. gets around having nonphysical negative components, even
+    # if they give a globally good solution
+    try:
+        lsq_soln = opt.least_squares(
+            residual, init_guess[~fixed_weights], jac=jacobian,
+            x_scale=x_scale,
+            verbose=verbose,
+            bounds=bounds,
+            **lsq_kwargs
+        )
+    except:
+        init_resid = residual(init_guess[~fixed_weights])
+        if not np.all(~np.isfinite(init_resid)):
+            print('non-finite residual for x values:')
+            xs_non_finite = xs[~np.isfinite(init_resid)]
+            print(xs_non_finite)
+            print('which have truth values:')
+            print(func(xs_non_finite))
+            print(xs[truth == 0.0])
+        raise
     if verbose > 0:
         end = time.time()
         print(f'lsq took {end-start:.3f} seconds')
