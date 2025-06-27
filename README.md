@@ -3,7 +3,7 @@
 Computes the density profiles of dark matter halos in the case of self-interacting
 dark matter (SIDM).
 
-Uses the isothermal jeans modeling formalism (see [Robertson 2021](https://ui.adsabs.harvard.edu/abs/2021MNRAS.501.4610R/abstract) for a great overview).
+Uses the isothermal jeans modeling formalism (see [Robertson 2021](https://ui.adsabs.harvard.edu/abs/2021MNRAS.501.4610R/abstract) for a great overview). **Note:** This formalism has been shown to work well for the 'core-expansion' phase of SIDM evolution, but likely does not capture the 'core-collapse' phase of SIDM evolution. I use this package for modeling *cluster* halos where cross sections are tighter constrained and core collapse is ruled out.
 
 Solutions are converted to a sum of Cored Steep Ellipsoid (CSE) profiles, which
 can be fed to e.g. lenstronomy to give strong lensing observables.
