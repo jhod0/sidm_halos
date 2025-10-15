@@ -44,3 +44,8 @@ And it gives this plot:
 - astropy
 - colossus
 - lenstronomy
+
+
+## Citation
+
+If you make use if this software, please cite [O'Donnell 2025](https://ui.adsabs.harvard.edu/abs/2025arXiv250820179O/abstract).
